@@ -40,23 +40,23 @@ type BeforeInstallPromptEvent = Event & {
 };
 
 const EQUIPMENT: EquipmentGroup[] = [
-  { cat: 'Video & Switching', items: [
-    { id: 'cam', name: 'Cameras Blackmagic', qty: 3 },
+  { cat: 'Vídeo & Switching', items: [
+    { id: 'cam', name: 'Câmeras Blackmagic', qty: 3 },
     { id: 'atem', name: 'ATEM Mini Pro', qty: 2 },
     { id: 'bat', name: 'Baterias Blackmagic', qty: 3 },
   ] },
-  { cat: 'Audio', items: [
-    { id: 'mesa', name: 'Mesa de audio', qty: 1 },
+  { cat: 'Áudio', items: [
+    { id: 'mesa', name: 'Mesa de áudio', qty: 1 },
     { id: 'mic', name: 'Microfones condensadores podcast', qty: 4 },
     { id: 'akg', name: 'Fone AKG', qty: 1 },
   ] },
-  { cat: 'Iluminacao', items: [
+  { cat: 'Iluminação', items: [
     { id: 'soft', name: 'Softbox', qty: 1 },
     { id: 'led', name: 'LEDs coloridos', qty: 2 },
   ] },
   { cat: 'Suporte', items: [
-    { id: 'tripe', name: 'Tripes', qty: 3, alert: 'Falta 1' },
-    { id: 'tripe_led', name: 'Tripes dos LEDs RGB', qty: 2 },
+    { id: 'tripe', name: 'Tripés', qty: 3, alert: 'Falta 1' },
+    { id: 'tripe_led', name: 'Tripés dos LEDs RGB', qty: 2 },
   ] },
   { cat: 'Energia', items: [
     { id: 'filtro', name: 'Filtro de linha', qty: 1 },
@@ -74,7 +74,7 @@ const GOOGLE_AUTH_ENABLED = import.meta.env.VITE_GOOGLE_AUTH_ENABLED === 'true';
 const ROLE_LABEL: Record<UserRole, string> = {
   admin: 'admin',
   borrower: 'retirada',
-  viewer: 'visualizacao',
+  viewer: 'visualização',
 };
 
 function readJson<T>(key: string, fallback: T): T {
@@ -99,7 +99,7 @@ function initials(name: string) {
 }
 
 function equipmentName(id: string) {
-  if (id === 'geral') return 'Geral do estudio';
+  if (id === 'geral') return 'Geral do estúdio';
   return ALL_EQUIPMENT.find((item) => item.id === id)?.name ?? 'Equipamento';
 }
 
@@ -121,10 +121,10 @@ function resizePhoto(file: File): Promise<string> {
     }
 
     const reader = new FileReader();
-    reader.onerror = () => reject(new Error('Nao foi possivel ler a imagem.'));
+    reader.onerror = () => reject(new Error('Não foi possível ler a imagem.'));
     reader.onload = () => {
       const img = new Image();
-      img.onerror = () => reject(new Error('Imagem invalida.'));
+      img.onerror = () => reject(new Error('Imagem inválida.'));
       img.onload = () => {
         const max = 1280;
         const scale = Math.min(1, max / Math.max(img.width, img.height));
@@ -147,10 +147,10 @@ function resizeAvatar(file: File): Promise<string> {
       return;
     }
     const reader = new FileReader();
-    reader.onerror = () => reject(new Error('Nao foi possivel ler a imagem.'));
+    reader.onerror = () => reject(new Error('Não foi possível ler a imagem.'));
     reader.onload = () => {
       const img = new Image();
-      img.onerror = () => reject(new Error('Imagem invalida.'));
+      img.onerror = () => reject(new Error('Imagem inválida.'));
       img.onload = () => {
         const max = 320;
         const scale = Math.min(1, max / Math.max(img.width, img.height));
@@ -176,15 +176,15 @@ function borrowDueText(checkout: Checkout) {
     return `Atrasado, venceu ${dueDate} (${days}d)`;
   }
   const left = Math.max(0, Math.ceil((deadline - now) / dayMs));
-  return left === 0 ? `Devolver hoje (${dueDate})` : `Devolver ate ${dueDate}, faltam ${left}d`;
+  return left === 0 ? `Devolver hoje (${dueDate})` : `Devolver até ${dueDate}, faltam ${left}d`;
 }
 
 function friendlyAuthError(message: string) {
   const msg = message.toLowerCase();
   if (msg.includes('invalid login')) return 'Email ou senha incorretos.';
-  if (msg.includes('already registered') || msg.includes('already been registered')) return 'Esse email ja tem cadastro. Faca login.';
+  if (msg.includes('already registered') || msg.includes('already been registered')) return 'Esse email já tem cadastro. Faça login.';
   if (msg.includes('password should be at least')) return 'A senha precisa de pelo menos 6 caracteres.';
-  if (msg.includes('unable to validate email') || msg.includes('invalid email')) return 'Email invalido.';
+  if (msg.includes('unable to validate email') || msg.includes('invalid email')) return 'Email inválido.';
   if (msg.includes('email not confirmed')) return 'Confirme seu email pelo link que enviamos antes de entrar.';
   return message;
 }
@@ -219,7 +219,7 @@ export function App() {
   const [mediaEquipment, setMediaEquipment] = useState('geral');
   const [mediaTitle, setMediaTitle] = useState('');
   const [mediaBusy, setMediaBusy] = useState(false);
-  const [savedNote, setSavedNote] = useState('Conferencia salva automaticamente');
+  const [savedNote, setSavedNote] = useState('Conferência salva automaticamente');
   const [cameraClock, setCameraClock] = useState(Date.now());
   const [cameraOn, setCameraOn] = useState(false);
   const [accessRequestBusy, setAccessRequestBusy] = useState(false);
@@ -376,13 +376,13 @@ export function App() {
 
   function flash(message = 'Salvo') {
     setSavedNote(message);
-    window.setTimeout(() => setSavedNote('Conferencia salva automaticamente'), 1400);
+    window.setTimeout(() => setSavedNote('Conferência salva automaticamente'), 1400);
   }
 
   function persist(action: () => Promise<void>) {
     action().catch((error) => {
       console.warn('Falha ao sincronizar com Supabase.', error);
-      flash('Salvo neste aparelho; sincronizacao pendente');
+      flash('Salvo neste aparelho; sincronização pendente');
     });
   }
 
@@ -433,7 +433,7 @@ export function App() {
           return;
         }
         if (!data.session) {
-          setAuthInfo('Cadastro criado. Confirme pelo link enviado ao seu email e depois faca login.');
+          setAuthInfo('Cadastro criado. Confirme pelo link enviado ao seu email e depois faça login.');
           setAuthMode('login');
           setFormPass('');
         }
@@ -454,7 +454,7 @@ export function App() {
     setAuthError('');
     setAuthInfo('');
     if (!GOOGLE_AUTH_ENABLED) {
-      setAuthError('Login com Google ainda nao foi ativado no Supabase. Use email e senha por enquanto.');
+      setAuthError('Login com Google ainda não foi ativado no Supabase. Use email e senha por enquanto.');
       return;
     }
     const { error } = await supabase.auth.signInWithOAuth({
@@ -504,7 +504,7 @@ export function App() {
       setAccessRequestInfo('Pedido enviado aos admins por email.');
     } catch (error) {
       console.warn('Falha ao pedir liberacao.', error);
-      setAccessRequestInfo('Nao foi possivel enviar o email. Verifique deploy/secrets da funcao.');
+      setAccessRequestInfo('Não foi possível enviar o email. Verifique deploy/secrets da função.');
     } finally {
       setAccessRequestBusy(false);
     }
@@ -558,7 +558,7 @@ export function App() {
       return { ...current, checkouts: next };
     });
     persist(() => deleteCheckout(id));
-    flash('Devolucao registrada');
+    flash('Devolução registrada');
   }
 
   function resetChecklist() {
@@ -602,14 +602,14 @@ export function App() {
       ].slice(0, 80),
     }));
     persist(() => addConference(record, userId));
-    flash(missingIds.length ? 'Conferencia salva com pendencias' : 'Conferencia salva sem faltas');
+    flash(missingIds.length ? 'Conferência salva com pendências' : 'Conferência salva sem faltas');
   }
 
   function saveObservation() {
     if (!canManage || !isAuthed) return;
     const text = observationDraft.trim();
     if (!text) {
-      flash('Escreva uma observacao antes de salvar');
+      flash('Escreva uma observação antes de salvar');
       return;
     }
 
@@ -637,7 +637,7 @@ export function App() {
     }));
     persist(() => addObservation(record, userId));
     setObservationDraft('');
-    flash('Observacao salva e aviso registrado');
+    flash('Observação salva e aviso registrado');
   }
 
   async function handleProfilePhoto(event: ChangeEvent<HTMLInputElement>) {
@@ -732,7 +732,7 @@ export function App() {
       setMediaTitle('');
       flash(syncStatus === 'sent' ? 'Foto enviada ao Drive e email' : 'Foto salva (envio ao Drive/email pendente de backend)');
     } catch {
-      flash('Nao foi possivel processar a foto');
+      flash('Não foi possível processar a foto');
     } finally {
       setMediaBusy(false);
     }
@@ -742,7 +742,7 @@ export function App() {
     if (!canManage) return;
     setStudio((current) => ({ ...current, media: current.media.filter((item) => item.id !== id) }));
     persist(() => deleteMedia(id));
-    flash('Midia removida');
+    flash('Mídia removida');
   }
 
   const installFab = canShowInstall ? (
@@ -757,8 +757,8 @@ export function App() {
       <div className="ios-hint-card" onClick={(event) => event.stopPropagation()}>
         <h3>Instalar no iPhone/iPad</h3>
         <ol>
-          <li>Toque no botao Compartilhar do Safari.</li>
-          <li>Escolha "Adicionar a Tela de Inicio".</li>
+          <li>Toque no botão Compartilhar do Safari.</li>
+          <li>Escolha "Adicionar à Tela de Início".</li>
           <li>Confirme em "Adicionar".</li>
         </ol>
         <button className="btn" type="button" onClick={() => setShowIosHint(false)}>Entendi</button>
@@ -790,7 +790,7 @@ export function App() {
           </div>
 
           {!supabaseConfigured && (
-            <div className="login-error">Configuracao do Supabase pendente. Defina VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY.</div>
+            <div className="login-error">Configuração do Supabase pendente. Defina VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY.</div>
           )}
 
           {authMode === 'signup' && (
@@ -822,10 +822,10 @@ export function App() {
               <path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.5-5.2l-6.2-5.3C29.2 34.9 26.7 36 24 36c-5.3 0-9.7-2.6-11.3-6.9l-6.5 5C9.5 39.6 16.2 44 24 44z" />
               <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.1-2.2 3.9-4 5.2l6.2 5.3C42.3 35.6 44 30.3 44 24c0-1.3-.1-2.3-.4-3.5z" />
             </svg>
-            {GOOGLE_AUTH_ENABLED ? 'Entrar com Google' : 'Google em configuracao'}
+            {GOOGLE_AUTH_ENABLED ? 'Entrar com Google' : 'Google em configuração'}
           </button>
 
-          <p className="login-foot">Novos cadastros entram como visualizacao ate um admin liberar retirada.</p>
+          <p className="login-foot">Novos cadastros entram como visualização até um admin liberar retirada.</p>
         </form>
         {installFab}
         {iosModal}
@@ -857,10 +857,10 @@ export function App() {
       {role === 'viewer' && (
         <div className="viewer-banner">
           <span>
-            Seu acesso esta como visualizacao. Um admin precisa liberar seu perfil para retirar equipamentos e salvar conferencias.
+            Seu acesso está como visualização. Um admin precisa liberar seu perfil para retirar equipamentos e salvar conferências.
           </span>
           <button className="btn small" type="button" onClick={requestAccess} disabled={accessRequestBusy}>
-            {accessRequestBusy ? 'Enviando...' : 'Pedir liberacao'}
+            {accessRequestBusy ? 'Enviando...' : 'Pedir liberação'}
           </button>
           {accessRequestInfo && <strong>{accessRequestInfo}</strong>}
         </div>
@@ -869,14 +869,14 @@ export function App() {
       <section className="grid">
         <article className="card">
           <div className="card-head">
-            <h2>Camera ao vivo</h2>
+            <h2>Câmera ao vivo</h2>
             {cameraOn && <span className="live-badge camera-rec">REC</span>}
           </div>
           <div className="video-box camera-frame">
             {cameraOn ? (
               <>
                 <iframe
-                  title="Camera ao vivo"
+                  title="Câmera ao vivo"
                   src={`https://www.youtube.com/embed/${STREAM_ID}?autoplay=1&mute=1&controls=0&rel=0&modestbranding=1&iv_load_policy=3&disablekb=1&fs=0&playsinline=1`}
                   allow="autoplay; encrypted-media; picture-in-picture"
                   allowFullScreen
@@ -887,7 +887,7 @@ export function App() {
                     <span>{formatDateTime(cameraClock)}</span>
                   </div>
                   <div className="camera-hud bottom">
-                    <span>ASSEGO ESTUDIO</span>
+                    <span>ASSEGO ESTÚDIO</span>
                     <span>1080P · AUTO</span>
                   </div>
                   <span className="frame-corner tl" />
@@ -918,21 +918,21 @@ export function App() {
           <div className="ready">
             <span>{checkedCount} / {ALL_EQUIPMENT.length} conferidos</span>
             <div className="meter"><div style={{ width: `${(checkedCount / ALL_EQUIPMENT.length) * 100}%` }} /></div>
-            {outsideCount > 0 && <strong className="out-count">{outsideCount} equipamento(s) fora do estudio</strong>}
+            {outsideCount > 0 && <strong className="out-count">{outsideCount} equipamento(s) fora do estúdio</strong>}
             <div className="conference-status">
               {lastConference ? (
                 <>
-                  <strong>Ultima conferencia: {lastConference.user} em {formatDateTime(lastConference.ts)}</strong>
+                  <strong>Última conferência: {lastConference.user} em {formatDateTime(lastConference.ts)}</strong>
                   <span>
                     {lastConference.missingIds.length
-                      ? `Pendencias: ${lastConference.missingIds.map(equipmentName).join(', ')}`
+                      ? `Pendências: ${lastConference.missingIds.map(equipmentName).join(', ')}`
                       : 'Sem equipamentos faltando.'}
                   </span>
                 </>
               ) : (
                 <>
-                  <strong>Conferencia diaria ainda nao salva.</strong>
-                  <span>Marque os itens presentes e salve para registrar seu nome nesta pagina.</span>
+                  <strong>Conferência diária ainda não salva.</strong>
+                  <span>Marque os itens presentes e salve para registrar seu nome nesta página.</span>
                 </>
               )}
             </div>
@@ -979,11 +979,11 @@ export function App() {
                             </select>
                           </label>
                           <label className="equipment-photo-upload">
-                            Foto obrigatoria do equipamento
+                            Foto obrigatória do equipamento
                             <input type="file" accept="image/*" capture="environment" onChange={handleEquipmentPhoto} />
                             <span>Tire pelo celular ou envie uma imagem.</span>
                           </label>
-                          {pendingEquipmentPhoto && <img className="equipment-photo preview" src={pendingEquipmentPhoto} alt="Previa da foto anexada" />}
+                          {pendingEquipmentPhoto && <img className="equipment-photo preview" src={pendingEquipmentPhoto} alt="Prévia da foto anexada" />}
                           <button className="btn small" type="button" onClick={() => takeItem(item.id, pendingQty)} disabled={!pendingEquipmentPhoto}>Salvar retirada</button>
                           <button className="btn small ghost" type="button" onClick={() => { setPendingTake(''); setPendingEquipmentPhoto(''); }}>Cancelar</button>
                         </div>
@@ -997,7 +997,7 @@ export function App() {
             ))}
           </div>
           <div className="notes">
-            <label htmlFor="observationText">Observacoes</label>
+            <label htmlFor="observationText">Observações</label>
             <div className="note-compose">
               <textarea
                 id="observationText"
@@ -1010,14 +1010,14 @@ export function App() {
                     saveObservation();
                   }
                 }}
-                placeholder="Digite a observacao e aperte Enter para salvar"
+                placeholder="Digite a observação e aperte Enter para salvar"
               />
               <button className="btn" type="button" onClick={saveObservation} disabled={!canManage || !observationDraft.trim()}>Salvar</button>
             </div>
             <div className="observation-history">
-              <h3>Historico de observacoes</h3>
+              <h3>Histórico de observações</h3>
               {(studio.observations ?? []).length === 0 ? (
-                <p className="empty">Nenhuma observacao registrada ainda.</p>
+                <p className="empty">Nenhuma observação registrada ainda.</p>
               ) : (studio.observations ?? []).map((observation) => (
                 <article className="observation-item" key={observation.id}>
                   <div>
@@ -1045,13 +1045,13 @@ export function App() {
           <label>
             Equipamento
             <select value={mediaEquipment} disabled={!canManage} onChange={(event) => setMediaEquipment(event.target.value)}>
-              <option value="geral">Geral do estudio</option>
+              <option value="geral">Geral do estúdio</option>
               {ALL_EQUIPMENT.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
             </select>
           </label>
           <label>
             Nome (opcional)
-            <input value={mediaTitle} disabled={!canManage} onChange={(event) => setMediaTitle(event.target.value)} placeholder="Ex: camera com risco na lente" />
+            <input value={mediaTitle} disabled={!canManage} onChange={(event) => setMediaTitle(event.target.value)} placeholder="Ex: câmera com risco na lente" />
           </label>
           <label className="upload-btn">
             {mediaBusy ? 'Enviando...' : 'Enviar foto'}
