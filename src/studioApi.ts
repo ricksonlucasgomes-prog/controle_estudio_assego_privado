@@ -237,3 +237,59 @@ export async function deleteMedia(id: string) {
   const { error } = await supabase.from('studio_media').delete().eq('id', id);
   if (error) throw new Error(error.message);
 }
+
+// ---------------------------------------------------------------------
+// Agendamento do estúdio (avaliação pela diretoria/admin)
+// ---------------------------------------------------------------------
+
+export type BookingStatus = 'requested' | 'approved' | 'rejected' | 'cancelled';
+
+export type BookingParticipant = {
+  id: string;
+  full_name: string;
+  rg: string | null;
+  cpf: string | null;
+  email: string | null;
+  whatsapp: string | null;
+  social: string | null;
+};
+
+export type BookingRequest = {
+  id: string;
+  requester_name: string;
+  requester_rg: string | null;
+  requester_cpf: string | null;
+  requester_email: string | null;
+  requester_whatsapp: string | null;
+  requester_social: string | null;
+  requested_date: string | null;
+  requested_time: string | null;
+  status: BookingStatus;
+  created_at: string;
+  participants: BookingParticipant[];
+};
+
+// Lista as solicitações com os participantes aninhados. Só admin recebe
+// tudo (RLS): booking_req_select_own_or_admin + booking_part_select_own_or_admin.
+export async function listBookingRequests(): Promise<BookingRequest[]> {
+  if (!supabase) return [];
+  const rows = await selectOrThrow<Array<Record<string, unknown>>>(
+    supabase
+      .from('studio_booking_requests')
+      .select(
+        'id, requester_name, requester_rg, requester_cpf, requester_email, requester_whatsapp, requester_social, requested_date, requested_time, status, created_at, studio_booking_participants(id, full_name, rg, cpf, email, whatsapp, social)',
+      )
+      .order('created_at', { ascending: false })
+      .limit(100),
+  );
+  return (rows ?? []).map((row) => ({
+    ...(row as Omit<BookingRequest, 'participants'>),
+    participants: ((row.studio_booking_participants as BookingParticipant[]) ?? []),
+  }));
+}
+
+export async function updateBookingStatus(id: string, status: BookingStatus) {
+  if (!supabase) throw new Error('Banco de dados não configurado.');
+  const { error } = await supabase.from('studio_booking_requests').update({ status }).eq('id', id);
+  if (error) throw new Error(error.message);
+}

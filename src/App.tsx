@@ -15,12 +15,16 @@ import {
   setCheck,
   upsertCheckout,
   writeLocalStudio,
+  listBookingRequests,
+  updateBookingStatus,
   type Checkout,
   type MediaItem,
   type NotificationEvent,
   type ObservationRecord,
   type ConferenceRecord,
   type StudioState,
+  type BookingRequest,
+  type BookingStatus,
 } from './studioApi';
 
 type Equipment = {
@@ -90,6 +94,25 @@ const ROLE_LABEL: Record<UserRole, string> = {
   borrower: 'retirada',
   viewer: 'visualização',
 };
+
+const BOOKING_STATUS_LABEL: Record<BookingStatus, string> = {
+  requested: 'Pendente',
+  approved: 'Aprovada',
+  rejected: 'Rejeitada',
+  cancelled: 'Cancelada',
+};
+
+// Data 'YYYY-MM-DD' + hora 'HH:MM' -> 'dd/mm/aaaa às HH:MM' sem sofrer
+// deslocamento de fuso (parse manual, não via Date).
+function formatBookingWhen(date: string | null, time: string | null): string {
+  let out = '';
+  if (date) {
+    const [y, m, d] = date.split('-');
+    out = d && m && y ? `${d}/${m}/${y}` : date;
+  }
+  if (time) out = out ? `${out} às ${time}` : time;
+  return out || 'Sem data informada';
+}
 
 // 2. Adicionada a aba de Agenda no Menu
 const MAIN_TABS: TabItem[] = [
@@ -263,6 +286,12 @@ export function App() {
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [signatureName, setSignatureName] = useState('');
   const [bookingBusy, setBookingBusy] = useState(false);
+
+  // Painel de admin: solicitações de agendamento para aprovar/rejeitar.
+  const [bookingRequests, setBookingRequests] = useState<BookingRequest[]>([]);
+  const [bookingListBusy, setBookingListBusy] = useState(false);
+  const [bookingListError, setBookingListError] = useState('');
+  const [bookingActionId, setBookingActionId] = useState('');
 
   const role: UserRole = profile?.role ?? 'viewer';
   const canManage = role === 'admin' || role === 'borrower';
@@ -912,6 +941,44 @@ export function App() {
     setGuestsData((current) => current.map((guest, i) => (i === index ? { ...guest, [field]: value } : guest)));
   };
 
+  // ==========================================
+  // PAINEL DE ADMIN: solicitações de agendamento
+  // ==========================================
+  const loadBookingRequests = async () => {
+    if (!supabase) return;
+    setBookingListBusy(true);
+    setBookingListError('');
+    try {
+      setBookingRequests(await listBookingRequests());
+    } catch (error: any) {
+      setBookingListError(error?.message || 'Não foi possível carregar as solicitações.');
+    } finally {
+      setBookingListBusy(false);
+    }
+  };
+
+  async function decideBooking(id: string, status: BookingStatus) {
+    setBookingActionId(id);
+    // Atualização otimista; se falhar, recarrega do servidor.
+    setBookingRequests((current) => current.map((req) => (req.id === id ? { ...req, status } : req)));
+    try {
+      await updateBookingStatus(id, status);
+      flash(status === 'approved' ? 'Solicitação aprovada' : 'Solicitação rejeitada');
+    } catch (error: any) {
+      flash(error?.message || 'Falha ao atualizar solicitação');
+      loadBookingRequests();
+    } finally {
+      setBookingActionId('');
+    }
+  }
+
+  // Carrega as solicitações quando o usuário é admin (uma vez ao virar admin).
+  useEffect(() => {
+    if (role === 'admin' && supabaseConfigured) loadBookingRequests();
+    else setBookingRequests([]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [role]);
+
 
   const installFab = canShowInstall ? (
     <button className="install-fab" type="button" onClick={handleInstallClick}>
@@ -1109,6 +1176,66 @@ export function App() {
               </iframe>
             </div>
           </article>
+
+          {/* Painel de avaliação — só admin. Lista as solicitações assinadas
+              e permite aprovar/rejeitar (muda o status via RLS de admin). */}
+          {role === 'admin' && (
+            <article className="card booking-admin">
+              <div className="card-head">
+                <h2>Solicitações de agendamento</h2>
+                <button className="btn ghost" type="button" onClick={loadBookingRequests} disabled={bookingListBusy}>
+                  {bookingListBusy ? 'Atualizando…' : 'Atualizar'}
+                </button>
+              </div>
+
+              {bookingListError && <p className="out-count">{bookingListError}</p>}
+              {!bookingListBusy && !bookingListError && bookingRequests.length === 0 && (
+                <p className="guest-empty">Nenhuma solicitação por enquanto.</p>
+              )}
+
+              <div className="booking-list">
+                {bookingRequests.map((req) => (
+                  <div className={`booking-item booking-item--${req.status}`} key={req.id}>
+                    <div className="booking-item__head">
+                      <div className="booking-item__who">
+                        <strong>{req.requester_name}</strong>
+                        <span className="booking-item__when">{formatBookingWhen(req.requested_date, req.requested_time)}</span>
+                      </div>
+                      <span className={`booking-badge booking-badge--${req.status}`}>{BOOKING_STATUS_LABEL[req.status]}</span>
+                    </div>
+
+                    <div className="booking-item__contact">
+                      {req.requester_whatsapp && <span>📱 {req.requester_whatsapp}</span>}
+                      {req.requester_email && <span>✉ {req.requester_email}</span>}
+                      {req.requester_cpf && <span>CPF {req.requester_cpf}</span>}
+                    </div>
+
+                    {req.participants.length > 0 && (
+                      <details className="booking-item__guests">
+                        <summary>{req.participants.length} convidado(s)</summary>
+                        <ul>
+                          {req.participants.map((p) => (
+                            <li key={p.id}>{p.full_name}{p.whatsapp ? ` — ${p.whatsapp}` : ''}</li>
+                          ))}
+                        </ul>
+                      </details>
+                    )}
+
+                    <div className="booking-item__actions">
+                      {req.status === 'requested' ? (
+                        <>
+                          <button className="btn btn-yellow" type="button" disabled={bookingActionId === req.id} onClick={() => decideBooking(req.id, 'approved')}>Aprovar</button>
+                          <button className="btn btn-outline" type="button" disabled={bookingActionId === req.id} onClick={() => decideBooking(req.id, 'rejected')}>Rejeitar</button>
+                        </>
+                      ) : (
+                        <button className="btn ghost" type="button" disabled={bookingActionId === req.id} onClick={() => decideBooking(req.id, 'requested')}>Reabrir</button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </article>
+          )}
         </div>
 
 

@@ -1781,3 +1781,73 @@ footer {
   .agenda-head { flex-direction: column; align-items: stretch; }
   .agenda-head .btn { width: 100%; text-align: center; }
 }
+
+/* ===== Painel de admin: solicitações de agendamento ===== */
+.booking-admin { margin-top: 16px; }
+
+.booking-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.booking-item {
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--muted);
+  border-radius: var(--radius-md, 12px);
+  background: var(--panel-2);
+  padding: 14px;
+}
+.booking-item--requested { border-left-color: var(--warn); }
+.booking-item--approved  { border-left-color: var(--ok); }
+.booking-item--rejected  { border-left-color: var(--alert); }
+.booking-item--cancelled { border-left-color: var(--muted); opacity: .75; }
+
+.booking-item__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+.booking-item__who { display: flex; flex-direction: column; gap: 2px; }
+.booking-item__when { color: var(--muted); font-size: 13px; }
+
+.booking-badge {
+  flex: none;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+}
+.booking-badge--requested { color: var(--warn);  background: rgba(var(--warn-rgb), .14); }
+.booking-badge--approved  { color: var(--ok);    background: rgba(var(--ok-rgb), .14); }
+.booking-badge--rejected  { color: var(--alert); background: rgba(var(--alert-rgb), .14); }
+.booking-badge--cancelled { color: var(--muted); background: rgba(var(--muted-rgb), .14); }
+
+.booking-item__contact {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.booking-item__guests { margin-top: 8px; font-size: 13px; }
+.booking-item__guests summary { cursor: pointer; color: var(--accent-bright); }
+.booking-item__guests ul { margin: 8px 0 0; padding-left: 18px; color: var(--muted); }
+.booking-item__guests li { margin: 2px 0; }
+
+.booking-item__actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 640px) {
+  .booking-item__actions .btn { flex: 1; text-align: center; }
+}
