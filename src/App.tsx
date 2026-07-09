@@ -117,7 +117,7 @@ function formatBookingWhen(date: string | null, time: string | null): string {
 // 2. Adicionada a aba de Agenda no Menu
 const MAIN_TABS: TabItem[] = [
   { id: 'agenda', label: 'Agenda', icon: CalendarDays },
-  { id: 'camera', label: 'Câmera', icon: Video },
+  { id: 'camera', label: 'Ao Vivo', icon: Video },
   { id: 'conference', label: 'Conferência', icon: ClipboardCheck },
   { id: 'custody', label: 'Cautela', icon: PackageCheck },
 ];
@@ -1032,12 +1032,12 @@ export function App() {
       <div className="live-modal-card" onClick={(event) => event.stopPropagation()}>
         <div className="live-modal-head">
           <span className="live-badge camera-rec">REC</span>
-          <span className="live-modal-title">Câmera ao vivo</span>
+          <span className="live-modal-title">Ao Vivo</span>
           <button className="live-modal-close" type="button" onClick={() => setCameraOn(false)} aria-label="Fechar transmissão">✕</button>
         </div>
         <div className="video-box camera-frame">
           <iframe
-            title="Câmera ao vivo"
+            title="Transmissão ao vivo"
             src={`https://www.youtube.com/embed/${STREAM_ID}?autoplay=1&mute=1&controls=0&rel=0&modestbranding=1&iv_load_policy=3&disablekb=1&fs=0&playsinline=1`}
             allow="autoplay; encrypted-media; picture-in-picture"
             allowFullScreen
@@ -1048,7 +1048,7 @@ export function App() {
               <span>{formatDateTime(cameraClock)}</span>
             </div>
             <div className="camera-hud bottom">
-              <span>ASSEGO ESTÚDIO</span>
+              <span>ASSEGO STUDIO</span>
               <span>1080P · AUTO</span>
             </div>
             <span className="frame-corner tl" />
@@ -1310,7 +1310,7 @@ export function App() {
 
 
         {/* ============================== */}
-        {/* ABA ANTIGA: CÂMERA AO VIVO     */}
+        {/* ABA: AO VIVO                  */}
         {/* ============================== */}
         <div className={`tab-panel ${activeTab === 'camera' ? 'active' : ''}`}>
         <article className="card">
