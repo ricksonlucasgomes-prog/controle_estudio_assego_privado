@@ -59,6 +59,30 @@ create index if not exists studio_booking_participants_request_idx
 alter table public.studio_booking_requests enable row level security;
 alter table public.studio_booking_participants enable row level security;
 
+-- Aprovadores oficiais que podem ver dados pessoais de agendamento no app.
+-- Mantemos role = admin como requisito e restringimos aos nomes aprovados.
+create or replace function public.current_user_is_booking_approver()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.profiles p
+    where p.id = auth.uid()
+      and p.role = 'admin'
+      and (
+        lower(p.full_name) like 'lucas%'
+        or lower(p.full_name) = 'badu'
+        or lower(p.full_name) like 'sergio%'
+        or lower(p.full_name) like 'sérgio%'
+        or lower(p.full_name) = 'serginho'
+      )
+  );
+$$;
+
 -- ---------------------------------------------------------------------
 -- Reconciliação de tabela pré-existente
 -- O `create table if not exists` acima NÃO altera colunas de uma tabela
@@ -107,23 +131,23 @@ create policy "booking_req_insert_self" on public.studio_booking_requests
 for insert to authenticated
 with check (requester_id = auth.uid());
 
--- Solicitante vê as suas; admin vê todas (avaliação da diretoria).
+-- Solicitante vê as suas; aprovadores oficiais veem todas.
 create policy "booking_req_select_own_or_admin" on public.studio_booking_requests
 for select to authenticated
-using (requester_id = auth.uid() or public.current_user_role() = 'admin');
+using (requester_id = auth.uid() or public.current_user_is_booking_approver());
 
 -- Mudança de status (aprovar/rejeitar/cancelar) é ato da diretoria.
 create policy "booking_req_update_admin" on public.studio_booking_requests
 for update to authenticated
-using (public.current_user_role() = 'admin')
-with check (public.current_user_role() = 'admin');
+using (public.current_user_is_booking_approver())
+with check (public.current_user_is_booking_approver());
 
 -- DELETE necessário para a compensação transacional da função:
 -- se a assinatura falhar, a reserva é desfeita para não deixar
 -- agendamento sem prova jurídica. Restrito ao dono ou admin.
 create policy "booking_req_delete_own_or_admin" on public.studio_booking_requests
 for delete to authenticated
-using (requester_id = auth.uid() or public.current_user_role() = 'admin');
+using (requester_id = auth.uid() or public.current_user_is_booking_approver());
 
 -- ---------------------------------------------------------------------
 -- RLS: studio_booking_participants (herda o dono via solicitação-pai)
@@ -146,7 +170,7 @@ with check (
 create policy "booking_part_select_own_or_admin" on public.studio_booking_participants
 for select to authenticated
 using (
-  public.current_user_role() = 'admin'
+  public.current_user_is_booking_approver()
   or exists (
     select 1 from public.studio_booking_requests r
     where r.id = booking_request_id and r.requester_id = auth.uid()
@@ -156,7 +180,7 @@ using (
 create policy "booking_part_delete_own_or_admin" on public.studio_booking_participants
 for delete to authenticated
 using (
-  public.current_user_role() = 'admin'
+  public.current_user_is_booking_approver()
   or exists (
     select 1 from public.studio_booking_requests r
     where r.id = booking_request_id and r.requester_id = auth.uid()

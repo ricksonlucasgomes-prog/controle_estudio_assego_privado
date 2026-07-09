@@ -1,5 +1,5 @@
 import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react';
-import { ClipboardCheck, PackageCheck, Video, CalendarDays, type LucideIcon } from 'lucide-react';
+import { Bell, ClipboardCheck, PackageCheck, Video, CalendarDays, type LucideIcon } from 'lucide-react';
 import { edgeFunctionUrl, supabase, supabaseConfigured, type Profile, type UserRole } from './supabase';
 import {
   DEFAULT_DRIVE_FOLDER,
@@ -319,6 +319,10 @@ export function App() {
   const canSaveConference = canManage && (!conferenceNeedsObservation || Boolean(conferenceObservation));
   const outsideCount = Object.keys(studio.checkouts).length;
   const lastConference = studio.conferences[0];
+  const pendingBookingCount = useMemo(
+    () => bookingRequests.filter((req) => req.status === 'requested').length,
+    [bookingRequests],
+  );
 
   const isIos = typeof navigator !== 'undefined' && /iphone|ipad|ipod/i.test(navigator.userAgent);
   const isStandalone = typeof window !== 'undefined'
@@ -988,12 +992,18 @@ export function App() {
     }
   }
 
-  // Carrega as solicitações quando o usuário é admin (uma vez ao virar admin).
+  // Carrega e atualiza as solicitações enquanto um aprovador oficial esta logado.
   useEffect(() => {
-    if (role === 'admin' && supabaseConfigured) loadBookingRequests();
-    else setBookingRequests([]);
+    if (role !== 'admin' || !supabaseConfigured) {
+      setBookingRequests([]);
+      return;
+    }
+
+    loadBookingRequests();
+    const timer = window.setInterval(loadBookingRequests, 15000);
+    return () => window.clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [role]);
+  }, [role, supabaseConfigured]);
 
 
   const installFab = canShowInstall ? (
@@ -1199,9 +1209,18 @@ export function App() {
             <article className="card booking-admin">
               <div className="card-head">
                 <h2>Solicitações de agendamento</h2>
+                <p className="booking-admin__scope">Visivel apenas para Lucas, Badu e Sergio Vinicius.</p>
                 <button className="btn ghost" type="button" onClick={loadBookingRequests} disabled={bookingListBusy}>
                   {bookingListBusy ? 'Atualizando…' : 'Atualizar'}
                 </button>
+              </div>
+
+              <div className={`booking-alert ${pendingBookingCount > 0 ? 'booking-alert--active' : ''}`}>
+                <span className="booking-alert__icon" aria-hidden="true"><Bell size={18} /></span>
+                <div>
+                  <strong>{pendingBookingCount > 0 ? `${pendingBookingCount} solicitacao(oes) aguardando analise` : 'Nenhuma solicitacao pendente'}</strong>
+                  <span>As novas solicitacoes chegam aqui no proprio app com os dados preenchidos pelo usuario.</span>
+                </div>
               </div>
 
               {bookingListError && <p className="out-count">{bookingListError}</p>}
@@ -1217,13 +1236,28 @@ export function App() {
                         <strong>{req.requester_name}</strong>
                         <span className="booking-item__when">{formatBookingWhen(req.requested_date, req.requested_time)}</span>
                       </div>
-                      <span className={`booking-badge booking-badge--${req.status}`}>{BOOKING_STATUS_LABEL[req.status]}</span>
+                      <div className="booking-item__badges">
+                        {req.status === 'requested' && <span className="booking-badge booking-badge--new">Nova</span>}
+                        <span className={`booking-badge booking-badge--${req.status}`}>{BOOKING_STATUS_LABEL[req.status]}</span>
+                      </div>
                     </div>
 
                     <div className="booking-item__contact">
                       {req.requester_whatsapp && <span>📱 {req.requester_whatsapp}</span>}
                       {req.requester_email && <span>✉ {req.requester_email}</span>}
                       {req.requester_cpf && <span>CPF {req.requester_cpf}</span>}
+                    </div>
+
+                    <div className="booking-item__section">
+                      <h3>Dados completos do solicitante</h3>
+                      <div className="booking-field-grid">
+                        <span><b>Nome</b>{req.requester_name || '-'}</span>
+                        <span><b>WhatsApp</b>{req.requester_whatsapp || '-'}</span>
+                        <span><b>Email</b>{req.requester_email || '-'}</span>
+                        <span><b>RG</b>{req.requester_rg || '-'}</span>
+                        <span><b>CPF</b>{req.requester_cpf || '-'}</span>
+                        <span><b>Rede social</b>{req.requester_social || '-'}</span>
+                      </div>
                     </div>
 
                     {req.participants.length > 0 && (
@@ -1235,6 +1269,26 @@ export function App() {
                           ))}
                         </ul>
                       </details>
+                    )}
+
+                    {req.participants.length > 0 && (
+                      <div className="booking-item__section">
+                        <h3>Dados completos dos convidados</h3>
+                        <div className="booking-guests-list">
+                          {req.participants.map((p) => (
+                            <div className="booking-guest" key={p.id}>
+                              <strong>{p.full_name}</strong>
+                              <div className="booking-field-grid">
+                                <span><b>WhatsApp</b>{p.whatsapp || '-'}</span>
+                                <span><b>Email</b>{p.email || '-'}</span>
+                                <span><b>RG</b>{p.rg || '-'}</span>
+                                <span><b>CPF</b>{p.cpf || '-'}</span>
+                                <span><b>Rede social</b>{p.social || '-'}</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
                     )}
 
                     <div className="booking-item__actions">

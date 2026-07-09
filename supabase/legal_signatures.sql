@@ -51,7 +51,7 @@ with check (signer_id = auth.uid());
 -- Leitura restrita à diretoria (admin) — dado sensível.
 create policy "legal_sig_select_admin" on public.legal_signatures
 for select to authenticated
-using (public.current_user_role() = 'admin');
+using (public.current_user_is_booking_approver());
 
 -- Observação: propositalmente NÃO existem policies de UPDATE/DELETE.
 -- Com RLS habilitada, isso torna cada registro imutável para os usuários,
