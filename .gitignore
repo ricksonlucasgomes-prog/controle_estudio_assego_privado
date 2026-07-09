@@ -8,3 +8,6 @@ dist/
 .DS_Store
 Thumbs.db
 .claude/
+
+# Supabase CLI local state (gerado pela CLI, nao versionar)
+supabase/.temp/
