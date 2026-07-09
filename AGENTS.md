@@ -60,7 +60,7 @@ Sistema web privado para controle dos equipamentos do estudio de podcast da ASSE
 - A aplicacao principal esta em `src/App.tsx`.
 - Auth via Supabase Auth real (login por email/senha e Google OAuth).
 - Dados persistidos em tabelas Supabase (fonte primaria). `localStorage` e apenas fallback quando o Supabase nao esta configurado/disponivel.
-- `CLAUDE_PROJECT_CONTEXT.md` e o contexto mais atualizado para continuar o trabalho.
+- Contexto de projeto: `CODEX_PROJECT_CONTEXT.md` (resumo curto e atual — leia primeiro). `CLAUDE_PROJECT_CONTEXT.md` e um log historico mais longo e em parte desatualizado; consulte para historico, mas o codigo e o `CODEX_PROJECT_CONTEXT.md` prevalecem sobre ele quanto ao estado atual.
 
 ## Regras de usuarios
 
