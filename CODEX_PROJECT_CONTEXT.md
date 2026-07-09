@@ -129,3 +129,44 @@ agendamento já foram aplicados no Supabase; `submit-booking` já foi publicada.
   em logs públicos, RLS conforme papel.
 - Commits pequenos e reversíveis; app sempre rodável; validar no navegador
   antes de dizer "pronto". Não fazer `push` sem o Lucas pedir.
+
+
+---
+
+## 11. Atualização — 2026-07-09 (sessão Cowork)
+
+### 11.1 Aba Ao Vivo — MVP local implementado (build OK, não commitado)
+- Alterados apenas `src/App.tsx` e `src/styles.css`.
+- Removido o modal de câmera como único ponto de entrada; a aba agora renderiza
+  direto: player YouTube fixo no topo, info do episódio, filtros
+  (Todos/Ao vivo/Gravados) e lista de episódios (`PODCAST_EPISODES`, tipo
+  `PodcastEpisode`, ainda só com o item fixo do `STREAM_ID`).
+- Botão flutuante de áudio (`Volume2`/`VolumeX` do lucide-react) adicionado,
+  alterna `audioEnabled`; sem `audioUrl` real ainda, não quebra o app.
+- `cameraOn`/`liveModal`/`id: 'camera'` mantidos internamente sem refator.
+- `npm.cmd run build` passou. **Nenhum commit/push feito** — aguardando
+  validação visual e autorização do Lucas.
+
+### 11.2 Redesign Fase 1 — decisão de escopo
+Lucas enviou 3 prints de referência (YouTube Music, Netflix, Spotify) e
+confirmou: **são referência visual/funcional/de marketing para o redesign
+geral do app (Fase 1)**, não apenas para a aba Ao Vivo.
+
+Elementos identificados em cada referência:
+- **YouTube Music:** pills de categoria roláveis no topo, fileiras horizontais
+  por tema ("Hits de hoje", "Playlists da comunidade"), menu lateral (drawer)
+  com Início/Explorar/Biblioteca/Upgrade.
+- **Netflix:** banner de destaque no topo (hero) com CTA "Assistir", fileiras
+  horizontais por categoria ("Continuar assistindo como Lucas", "Top 10").
+- **Spotify:** banner promocional dispensável, fileiras horizontais
+  ("Músicas em alta", "Artistas populares"), barra de navegação inferior fixa.
+
+**Decisão registrada:** fechar a direção visual completa (todas as telas,
+não só Ao Vivo) antes de continuar alterando código. Ou seja: a Fase 1 do
+roadmap (seção 10 da versão anterior deste doc) segue em aberto — próximo
+passo é consolidar essas referências num mockup/direção única, não
+implementar redesign ainda.
+
+**Pendências que continuam de pé** (seção 9 da versão anterior): as 3
+perguntas sobre visibilidade por papel, e a aprovação final do mockup da
+tela inicial.

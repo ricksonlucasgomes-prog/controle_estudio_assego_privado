@@ -1,6 +1,8 @@
-import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react';
-import { Bell, ClipboardCheck, PackageCheck, Video, CalendarDays, Volume2, VolumeX, type LucideIcon } from 'lucide-react';
+import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { Bell, ClipboardCheck, PackageCheck, Video, CalendarDays, Volume2, VolumeX, Camera, LogOut, type LucideIcon } from 'lucide-react';
 import { edgeFunctionUrl, supabase, supabaseConfigured, type Profile, type UserRole } from './supabase';
+import { TermsScrollPopup } from './TermsScrollPopup';
+import { BOOKING_TERMS } from './termsContent';
 import {
   DEFAULT_DRIVE_FOLDER,
   STUDIO_KEY,
@@ -93,6 +95,9 @@ type PodcastEpisode = {
   audioUrl?: string;
 };
 
+type AvailabilitySlot = { time: string; available: boolean };
+type AvailabilityDay = { date: string; weekday: number; slots: AvailabilitySlot[]; hasAvailability: boolean };
+
 const PODCAST_EPISODES: PodcastEpisode[] = [
   {
     id: 'assego-live-main',
@@ -108,8 +113,8 @@ const PODCAST_EPISODES: PodcastEpisode[] = [
 ];
 
 const EMAIL_RECIPIENTS = ['ricksonlucasgomes@gmail.com', 'comunicacaoassego@gmail.com', 'P3dacao@gmail.com'];
-// Documento oficial (fica em /public) e destinatários da aprovação do agendamento.
-const TERM_OF_USE_URL = '/Termo_de_Uso_Assego.pdf';
+// Destinatários da aprovação do agendamento. O texto do Termo de Uso agora
+// vive em src/termsContent.ts e é exibido inline no popup (ver TermsScrollPopup).
 const BOOKING_APPROVERS = ['Lucas Rickson', 'Badu', 'Sergio Vinicius'];
 const PODCAST_NOTICE = 'Toda Quarta-Feira às 19 horas tem podcast ao vivo da ASSEGO com o presidente Subtenente Sérgio';
 const UPLOAD_ENDPOINT = import.meta.env.VITE_UPLOAD_ENDPOINT as string | undefined;
@@ -269,6 +274,11 @@ export function App() {
   const [authReady, setAuthReady] = useState(false);
   const [userId, setUserId] = useState('');
   const [userEmail, setUserEmail] = useState('');
+  const [googleAvatarUrl, setGoogleAvatarUrl] = useState('');
+  const [showAccountMenu, setShowAccountMenu] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [expandedRequestId, setExpandedRequestId] = useState('');
+  const profilePhotoInputRef = useRef<HTMLInputElement>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
   const [formEmail, setFormEmail] = useState('');
@@ -311,11 +321,19 @@ export function App() {
   });
   const [guestsData, setGuestsData] = useState<{name: string, rg: string, cpf: string, email: string, whatsapp: string, social: string}[]>([]);
 
-  // 5. Gate jurídico: Termo de Uso baixado + aceite + assinatura digital
-  const [termDownloaded, setTermDownloaded] = useState(false);
-  const [acceptedTerms, setAcceptedTerms] = useState(false);
+  // 5. Gate jurídico: leitura completa do Termo (popup com scroll obrigatório) + assinatura digital
+  const [showTermPopup, setShowTermPopup] = useState(false);
+  const [termAccepted, setTermAccepted] = useState(false);
   const [signatureName, setSignatureName] = useState('');
   const [bookingBusy, setBookingBusy] = useState(false);
+
+  // Popup de disponibilidade (agenda real do estúdio via studio-availability).
+  const [showAvailability, setShowAvailability] = useState(false);
+  const [availabilityDays, setAvailabilityDays] = useState<AvailabilityDay[]>([]);
+  const [availabilityLoading, setAvailabilityLoading] = useState(false);
+  const [availabilityError, setAvailabilityError] = useState('');
+  const [availabilityMonthCursor, setAvailabilityMonthCursor] = useState(() => new Date());
+  const [availabilitySelectedDate, setAvailabilitySelectedDate] = useState('');
 
   // Painel de admin: solicitações de agendamento para aprovar/rejeitar.
   const [bookingRequests, setBookingRequests] = useState<BookingRequest[]>([]);
@@ -394,10 +412,17 @@ export function App() {
       if (session?.user) {
         setUserId(session.user.id);
         setUserEmail(session.user.email ?? '');
+        // Login com Google preenche avatar_url/picture no user_metadata.
+        setGoogleAvatarUrl(
+          (session.user.user_metadata?.avatar_url as string) ??
+          (session.user.user_metadata?.picture as string) ??
+          ''
+        );
         await loadProfile(session.user.id, session.user.email ?? '', (session.user.user_metadata?.full_name as string) ?? '');
       } else {
         setUserId('');
         setUserEmail('');
+        setGoogleAvatarUrl('');
         setProfile(null);
       }
       setAuthReady(true);
@@ -895,15 +920,69 @@ export function App() {
   // FUNÇÕES DA NOVA AGENDA
   // ==========================================
 
-  // Gate liberado só quando o Termo foi baixado, aceito e assinado.
-  const signatureReady = termDownloaded && acceptedTerms && signatureName.trim().length >= 3;
+  // Gate liberado só quando o Termo foi lido até o fim (popup) e assinado.
+  const signatureReady = termAccepted && signatureName.trim().length >= 3;
 
   function resetBookingForm() {
     setRequesterData({ name: '', rg: '', cpf: '', email: '', whatsapp: '', social: '', date: '', time: '' });
     setGuestsData([]);
-    setTermDownloaded(false);
-    setAcceptedTerms(false);
+    setShowTermPopup(false);
+    setTermAccepted(false);
     setSignatureName('');
+  }
+
+  // Mapa 'YYYY-MM-DD' -> dia retornado pela função studio-availability.
+  const availabilityByDate = useMemo(() => {
+    const map: Record<string, AvailabilityDay> = {};
+    availabilityDays.forEach((day) => { map[day.date] = day; });
+    return map;
+  }, [availabilityDays]);
+
+  // Grade do mês (domingo a sábado) para o popup de disponibilidade.
+  function buildAvailabilityMonthGrid(cursor: Date): (string | null)[] {
+    const year = cursor.getFullYear();
+    const month = cursor.getMonth();
+    const firstWeekday = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const cells: (string | null)[] = [];
+    for (let i = 0; i < firstWeekday; i++) cells.push(null);
+    for (let day = 1; day <= daysInMonth; day++) {
+      cells.push(`${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`);
+    }
+    return cells;
+  }
+
+  async function loadAvailability() {
+    if (!supabase) return;
+    setAvailabilityLoading(true);
+    setAvailabilityError('');
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) throw new Error('Sessão expirada. Faça login novamente.');
+      const response = await fetch(edgeFunctionUrl('studio-availability'), {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || 'Erro ao carregar disponibilidade da agenda.');
+      setAvailabilityDays(result.days ?? []);
+    } catch (error: any) {
+      setAvailabilityError(error.message || 'Erro ao carregar disponibilidade da agenda.');
+    } finally {
+      setAvailabilityLoading(false);
+    }
+  }
+
+  function openAvailabilityPopup() {
+    setShowAvailability(true);
+    setAvailabilitySelectedDate(requesterData.date || '');
+    setAvailabilityMonthCursor(requesterData.date ? new Date(`${requesterData.date}T00:00:00`) : new Date());
+    loadAvailability();
+  }
+
+  function pickAvailabilitySlot(date: string, time: string) {
+    setRequesterData((current) => ({ ...current, date, time }));
+    setShowAvailability(false);
   }
 
   const handleBookingSubmit = async (e: FormEvent) => {
@@ -911,7 +990,12 @@ export function App() {
     if (bookingBusy) return;
 
     if (!signatureReady) {
-      alert('Antes de enviar: baixe o Termo de Uso, marque o aceite e assine com seu nome completo.');
+      alert('Antes de enviar: leia o Termo de Uso até o final, clique em Concordo e assine com seu nome completo.');
+      return;
+    }
+
+    if (!requesterData.date || !requesterData.time) {
+      alert('Escolha uma data e horário disponível na agenda antes de enviar.');
       return;
     }
 
@@ -930,8 +1014,8 @@ export function App() {
       const signature = {
         fullName: signatureName.trim(),
         acceptedTerms: true,
-        termDocument: 'Termo_de_Uso_Assego.pdf',
-        termDownloaded: true,
+        termDocument: 'Termo_de_Uso_Assego_v2.pdf',
+        termRead: true,
         signedByUserId: userId,
         signedByEmail: userEmail,
         signedAt: new Date().toISOString(),
@@ -1177,28 +1261,203 @@ export function App() {
       </div>
 
       <header className="topbar brand-hero">
-        <div className="logo-chip"><img src="/logo.png" alt="ASSEGO PM & BM" /></div>
-        <div className="brand-copy">
-          <p className="eyebrow">ASSEGO PM &amp; BM</p>
-          <h1><strong>Assego Studio</strong></h1>
-          <p className="brand-subtitle">Agenda, cautela e conferência diária em um painel interno.</p>
-          <div className="brand-metrics" aria-label="Resumo do estúdio">
-            <span><strong>{ALL_EQUIPMENT.length}</strong> itens</span>
-            <span><strong>{checkedCount}</strong> conferidos</span>
-            <span><strong>{outsideCount}</strong> fora</span>
-            <span><strong>{ROLE_LABEL[role]}</strong> acesso</span>
+        <div className="brand-top">
+          <div className="brand-id">
+            <div className="logo-chip"><img src="/logo.png" alt="ASSEGO PM & BM" /></div>
+            <div className="brand-copy">
+              <p className="eyebrow">ASSEGO PM &amp; BM</p>
+              <h1>Assego Studio</h1>
+            </div>
+          </div>
+          <div className="session">
+            {role === 'admin' && (
+              <div className="notif-wrap">
+                <button
+                  type="button"
+                  className="notif-bell"
+                  aria-label="Notificações"
+                  onClick={() => setShowNotifications((current) => !current)}
+                >
+                  <Bell size={18} strokeWidth={2.2} aria-hidden="true" />
+                  {pendingBookingCount > 0 && <span className="notif-bell__badge">{pendingBookingCount}</span>}
+                </button>
+
+                {showNotifications && (
+                  <>
+                    <div className="account-menu-backdrop" onClick={() => setShowNotifications(false)} />
+                    <div className="notif-panel" role="menu">
+                      <div className="notif-panel__head">
+                        <div>
+                          <strong>Notificações</strong>
+                          <span>Solicitações de agendamento — visível para Lucas, Badu e Sérgio Vinicius.</span>
+                        </div>
+                        <button className="btn ghost" type="button" onClick={loadBookingRequests} disabled={bookingListBusy}>
+                          {bookingListBusy ? 'Atualizando…' : 'Atualizar'}
+                        </button>
+                      </div>
+
+                      {bookingListError && <p className="out-count">{bookingListError}</p>}
+                      {!bookingListBusy && !bookingListError && bookingRequests.length === 0 && (
+                        <p className="guest-empty">Nenhuma solicitação por enquanto.</p>
+                      )}
+
+                      <div className="notif-list">
+                        {bookingRequests.map((req) => {
+                          const expanded = expandedRequestId === req.id;
+                          return (
+                            <div className={`booking-item booking-item--${req.status}`} key={req.id}>
+                              <div className="booking-item__head">
+                                <div className="booking-item__who">
+                                  <strong>{req.requester_name}</strong>
+                                  <span className="booking-item__when">{formatBookingWhen(req.requested_date, req.requested_time)}</span>
+                                </div>
+                                <div className="booking-item__badges">
+                                  {req.status === 'requested' && <span className="booking-badge booking-badge--new">Nova</span>}
+                                  <span className={`booking-badge booking-badge--${req.status}`}>{BOOKING_STATUS_LABEL[req.status]}</span>
+                                </div>
+                              </div>
+
+                              <div className="booking-item__contact">
+                                {req.requester_whatsapp && <span>📱 {req.requester_whatsapp}</span>}
+                                {req.requester_email && <span>✉ {req.requester_email}</span>}
+                              </div>
+
+                              <button
+                                type="button"
+                                className="btn ghost btn-block booking-item__expand"
+                                onClick={() => setExpandedRequestId(expanded ? '' : req.id)}
+                              >
+                                {expanded ? 'Recolher ▲' : 'Expandir ▼'}
+                              </button>
+
+                              {expanded && (
+                                <>
+                                  <div className="booking-item__section">
+                                    <h3>Dados completos do solicitante</h3>
+                                    <div className="booking-field-grid">
+                                      <span><b>Nome</b>{req.requester_name || '-'}</span>
+                                      <span><b>WhatsApp</b>{req.requester_whatsapp || '-'}</span>
+                                      <span><b>Email</b>{req.requester_email || '-'}</span>
+                                      <span><b>RG</b>{req.requester_rg || '-'}</span>
+                                      <span><b>CPF</b>{req.requester_cpf || '-'}</span>
+                                      <span><b>Rede social</b>{req.requester_social || '-'}</span>
+                                    </div>
+                                  </div>
+
+                                  {req.participants.length > 0 && (
+                                    <div className="booking-item__section">
+                                      <h3>Dados completos dos convidados ({req.participants.length})</h3>
+                                      <div className="booking-guests-list">
+                                        {req.participants.map((p) => (
+                                          <div className="booking-guest" key={p.id}>
+                                            <strong>{p.full_name}</strong>
+                                            <div className="booking-field-grid">
+                                              <span><b>WhatsApp</b>{p.whatsapp || '-'}</span>
+                                              <span><b>Email</b>{p.email || '-'}</span>
+                                              <span><b>RG</b>{p.rg || '-'}</span>
+                                              <span><b>CPF</b>{p.cpf || '-'}</span>
+                                              <span><b>Rede social</b>{p.social || '-'}</span>
+                                            </div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  <div className="booking-item__actions">
+                                    {req.status === 'requested' ? (
+                                      <>
+                                        <button className="btn btn-yellow" type="button" disabled={bookingActionId === req.id} onClick={() => decideBooking(req.id, 'approved')}>Aprovar</button>
+                                        <button className="btn btn-outline" type="button" disabled={bookingActionId === req.id} onClick={() => decideBooking(req.id, 'rejected')}>Rejeitar</button>
+                                      </>
+                                    ) : (
+                                      <button className="btn ghost" type="button" disabled={bookingActionId === req.id} onClick={() => decideBooking(req.id, 'requested')}>Reabrir</button>
+                                    )}
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            <button
+              type="button"
+              className="avatar avatar-btn"
+              title={`${userName} · ${ROLE_LABEL[role]}`}
+              onClick={() => setShowAccountMenu((current) => !current)}
+            >
+              {profilePhotos[userId] || googleAvatarUrl ? (
+                <img src={profilePhotos[userId] || googleAvatarUrl} alt="" />
+              ) : initials(userName)}
+            </button>
+
+            {showAccountMenu && (
+              <>
+                <div className="account-menu-backdrop" onClick={() => setShowAccountMenu(false)} />
+                <div className="account-menu" role="menu">
+                  <div className="account-menu__head">
+                    <div className="avatar avatar--lg">
+                      {profilePhotos[userId] || googleAvatarUrl ? (
+                        <img src={profilePhotos[userId] || googleAvatarUrl} alt="" />
+                      ) : initials(userName)}
+                    </div>
+                    <div className="account-menu__id">
+                      <strong>{userName}</strong>
+                      <span>{userEmail}</span>
+                    </div>
+                  </div>
+                  <div className="account-menu__divider" />
+                  <button
+                    type="button"
+                    className="account-menu__item"
+                    onClick={() => {
+                      setShowAccountMenu(false);
+                      profilePhotoInputRef.current?.click();
+                    }}
+                  >
+                    <Camera aria-hidden="true" size={16} strokeWidth={2.2} />
+                    <span>
+                      Perfil
+                      <small>Alterar foto de perfil</small>
+                    </span>
+                  </button>
+                  <div className="account-menu__divider" />
+                  <button
+                    type="button"
+                    className="account-menu__item account-menu__item--danger"
+                    onClick={() => {
+                      setShowAccountMenu(false);
+                      logout();
+                    }}
+                  >
+                    <LogOut aria-hidden="true" size={16} strokeWidth={2.2} />
+                    <span>Sair</span>
+                  </button>
+                </div>
+              </>
+            )}
+
+            <input
+              ref={profilePhotoInputRef}
+              type="file"
+              accept="image/*"
+              style={{ display: 'none' }}
+              onChange={handleProfilePhoto}
+            />
           </div>
         </div>
-        <div className="session">
-          <div className="avatar">
-            {profilePhotos[userId] ? <img src={profilePhotos[userId]} alt="" /> : initials(userName)}
-          </div>
-          <span>{userName} - {ROLE_LABEL[role]}</span>
-          <label className="photo-btn">
-            Foto
-            <input type="file" accept="image/*" onChange={handleProfilePhoto} />
-          </label>
-          <button className="btn ghost" type="button" onClick={logout}>Sair</button>
+
+        <div className="brand-metrics" aria-label="Resumo do estúdio">
+          <span><strong>{ALL_EQUIPMENT.length}</strong> itens</span>
+          <span><strong>{checkedCount}</strong> conferidos</span>
+          <span><strong>{outsideCount}</strong> fora</span>
+          <span className="brand-metrics__accent"><strong>{ROLE_LABEL[role]}</strong> acesso</span>
         </div>
       </header>
 
@@ -1224,124 +1483,16 @@ export function App() {
             <div className="agenda-head">
               <h2>Assego Studio</h2>
               {role === 'admin' ? (
-                <button className="btn btn-yellow" type="button" onClick={() => setShowBookingModal(true)}>+ Gerenciar / Nova Reserva</button>
+                <button className="btn btn-yellow" type="button" onClick={() => setShowBookingModal(true)}>Reservar Estúdio</button>
               ) : (
                 <button className="btn btn-primary" type="button" onClick={() => setShowBookingModal(true)}>Solicitar Agendamento</button>
               )}
             </div>
-
-            <div className="calendar-frame">
-              <iframe
-                title="Google Calendar"
-                src="https://calendar.google.com/calendar/embed?height=600&wkst=1&bgcolor=%23050B14&ctz=America%2FSao_Paulo&showTitle=0&showPrint=0&showTabs=0&showCalendars=0&showTz=0&mode=WEEK"
-                scrolling="no">
-              </iframe>
-            </div>
           </article>
 
-          {/* Painel de avaliação — só admin. Lista as solicitações assinadas
-              e permite aprovar/rejeitar (muda o status via RLS de admin). */}
-          {role === 'admin' && (
-            <article className="card booking-admin">
-              <div className="card-head">
-                <h2>Solicitações de agendamento</h2>
-                <p className="booking-admin__scope">Visivel apenas para Lucas, Badu e Sergio Vinicius.</p>
-                <button className="btn ghost" type="button" onClick={loadBookingRequests} disabled={bookingListBusy}>
-                  {bookingListBusy ? 'Atualizando…' : 'Atualizar'}
-                </button>
-              </div>
-
-              <div className={`booking-alert ${pendingBookingCount > 0 ? 'booking-alert--active' : ''}`}>
-                <span className="booking-alert__icon" aria-hidden="true"><Bell size={18} /></span>
-                <div>
-                  <strong>{pendingBookingCount > 0 ? `${pendingBookingCount} solicitacao(oes) aguardando analise` : 'Nenhuma solicitacao pendente'}</strong>
-                  <span>As novas solicitacoes chegam aqui no proprio app com os dados preenchidos pelo usuario.</span>
-                </div>
-              </div>
-
-              {bookingListError && <p className="out-count">{bookingListError}</p>}
-              {!bookingListBusy && !bookingListError && bookingRequests.length === 0 && (
-                <p className="guest-empty">Nenhuma solicitação por enquanto.</p>
-              )}
-
-              <div className="booking-list">
-                {bookingRequests.map((req) => (
-                  <div className={`booking-item booking-item--${req.status}`} key={req.id}>
-                    <div className="booking-item__head">
-                      <div className="booking-item__who">
-                        <strong>{req.requester_name}</strong>
-                        <span className="booking-item__when">{formatBookingWhen(req.requested_date, req.requested_time)}</span>
-                      </div>
-                      <div className="booking-item__badges">
-                        {req.status === 'requested' && <span className="booking-badge booking-badge--new">Nova</span>}
-                        <span className={`booking-badge booking-badge--${req.status}`}>{BOOKING_STATUS_LABEL[req.status]}</span>
-                      </div>
-                    </div>
-
-                    <div className="booking-item__contact">
-                      {req.requester_whatsapp && <span>📱 {req.requester_whatsapp}</span>}
-                      {req.requester_email && <span>✉ {req.requester_email}</span>}
-                      {req.requester_cpf && <span>CPF {req.requester_cpf}</span>}
-                    </div>
-
-                    <div className="booking-item__section">
-                      <h3>Dados completos do solicitante</h3>
-                      <div className="booking-field-grid">
-                        <span><b>Nome</b>{req.requester_name || '-'}</span>
-                        <span><b>WhatsApp</b>{req.requester_whatsapp || '-'}</span>
-                        <span><b>Email</b>{req.requester_email || '-'}</span>
-                        <span><b>RG</b>{req.requester_rg || '-'}</span>
-                        <span><b>CPF</b>{req.requester_cpf || '-'}</span>
-                        <span><b>Rede social</b>{req.requester_social || '-'}</span>
-                      </div>
-                    </div>
-
-                    {req.participants.length > 0 && (
-                      <details className="booking-item__guests">
-                        <summary>{req.participants.length} convidado(s)</summary>
-                        <ul>
-                          {req.participants.map((p) => (
-                            <li key={p.id}>{p.full_name}{p.whatsapp ? ` — ${p.whatsapp}` : ''}</li>
-                          ))}
-                        </ul>
-                      </details>
-                    )}
-
-                    {req.participants.length > 0 && (
-                      <div className="booking-item__section">
-                        <h3>Dados completos dos convidados</h3>
-                        <div className="booking-guests-list">
-                          {req.participants.map((p) => (
-                            <div className="booking-guest" key={p.id}>
-                              <strong>{p.full_name}</strong>
-                              <div className="booking-field-grid">
-                                <span><b>WhatsApp</b>{p.whatsapp || '-'}</span>
-                                <span><b>Email</b>{p.email || '-'}</span>
-                                <span><b>RG</b>{p.rg || '-'}</span>
-                                <span><b>CPF</b>{p.cpf || '-'}</span>
-                                <span><b>Rede social</b>{p.social || '-'}</span>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="booking-item__actions">
-                      {req.status === 'requested' ? (
-                        <>
-                          <button className="btn btn-yellow" type="button" disabled={bookingActionId === req.id} onClick={() => decideBooking(req.id, 'approved')}>Aprovar</button>
-                          <button className="btn btn-outline" type="button" disabled={bookingActionId === req.id} onClick={() => decideBooking(req.id, 'rejected')}>Rejeitar</button>
-                        </>
-                      ) : (
-                        <button className="btn ghost" type="button" disabled={bookingActionId === req.id} onClick={() => decideBooking(req.id, 'requested')}>Reabrir</button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </article>
-          )}
+          {/* Painel de solicitações de agendamento movido para o popup de
+              notificações no header (ícone de sino ao lado do avatar).
+              Ver .notif-panel mais abaixo, dentro de <header className="brand-hero">. */}
         </div>
 
 
@@ -1565,6 +1716,7 @@ export function App() {
             {mediaBusy ? 'Enviando...' : 'Enviar foto'}
             <input type="file" accept="image/*" capture="environment" disabled={!canManage || mediaBusy} onChange={uploadMediaPhoto} />
           </label>
+          {!canManage && <span className="upload-locked-note">Envio de fotos disponível só para admin/borrower.</span>}
         </div>
         <div className="media-list">
           {studio.media.length === 0 ? (
@@ -1649,13 +1801,13 @@ export function App() {
                   <label htmlFor="req-social">Redes Sociais (@)</label>
                   <input id="req-social" type="text" placeholder="@seu_perfil (opcional)" value={requesterData.social} onChange={(e) => setRequesterData({ ...requesterData, social: e.target.value })} />
                 </div>
-                <div className="form-group">
-                  <label htmlFor="req-date">Data Desejada</label>
-                  <input id="req-date" required type="date" value={requesterData.date} onChange={(e) => setRequesterData({ ...requesterData, date: e.target.value })} />
-                </div>
-                <div className="form-group">
-                  <label htmlFor="req-time">Horário</label>
-                  <input id="req-time" required type="time" value={requesterData.time} onChange={(e) => setRequesterData({ ...requesterData, time: e.target.value })} />
+                <div className="form-group full">
+                  <label>Data e horário</label>
+                  <button type="button" className="availability-trigger" onClick={openAvailabilityPopup}>
+                    {requesterData.date && requesterData.time
+                      ? formatBookingWhen(requesterData.date, requesterData.time)
+                      : 'Escolher data e horário disponível'}
+                  </button>
                 </div>
               </div>
 
@@ -1704,49 +1856,26 @@ export function App() {
 
               {/* ============================================================
                   3. GATE JURÍDICO — Termo de Uso + Assinatura Digital
-                  A solicitação só é enviada aos aprovadores após baixar o
-                  Termo, aceitar e assinar. O backend (Edge Function) carimba
-                  IP (x-forwarded-for), timestamp e hash SHA-256 na tabela
-                  legal_signatures para não-repúdio.
+                  A solicitação só é enviada aos aprovadores após ler o Termo
+                  até o fim (popup com scroll obrigatório) e assinar. O backend
+                  (Edge Function) carimba IP (x-forwarded-for), timestamp e
+                  hash SHA-256 na tabela legal_signatures para não-repúdio.
                   ============================================================ */}
               <p className="modal-section-title">3. Termo de Uso e Assinatura Digital</p>
               <div className="signature-gate">
-                <div className={`signature-step ${termDownloaded ? 'done' : ''}`}>
+                <div className={`signature-step ${termAccepted ? 'done' : ''}`}>
                   <span className="signature-step__label">
-                    <span className="signature-step__num">{termDownloaded ? '✓' : '1'}</span>
-                    Baixe e leia o Termo de Uso / Regimento Interno
+                    <span className="signature-step__num">{termAccepted ? '✓' : '1'}</span>
+                    Leia o Termo de Uso até o final e clique em Concordo
                   </span>
-                  <a
-                    className="term-download"
-                    href={TERM_OF_USE_URL}
-                    download
-                    target="_blank"
-                    rel="noreferrer"
-                    onClick={() => setTermDownloaded(true)}
-                  >
-                    ⬇ Baixar Termo de Uso (PDF)
-                  </a>
-                </div>
-
-                <div className={`signature-step ${acceptedTerms ? 'done' : ''}`}>
-                  <span className="signature-step__label">
-                    <span className="signature-step__num">{acceptedTerms ? '✓' : '2'}</span>
-                    Aceite das regras
-                  </span>
-                  <label className="consent-row">
-                    <input
-                      type="checkbox"
-                      checked={acceptedTerms}
-                      disabled={!termDownloaded}
-                      onChange={(e) => setAcceptedTerms(e.target.checked)}
-                    />
-                    <span>Li e concordo com o Termo de Uso, o Regimento Interno e as regras do estúdio da ASSEGO, e assumo responsabilidade pelas informações prestadas.</span>
-                  </label>
+                  <button type="button" className="term-download" onClick={() => setShowTermPopup(true)}>
+                    {termAccepted ? '✓ Termo de Uso aceito — ler novamente' : '📄 Ler Termo de Uso'}
+                  </button>
                 </div>
 
                 <div className={`signature-step ${signatureName.trim().length >= 3 ? 'done' : ''}`}>
                   <span className="signature-step__label">
-                    <span className="signature-step__num">{signatureName.trim().length >= 3 ? '✓' : '3'}</span>
+                    <span className="signature-step__num">{signatureName.trim().length >= 3 ? '✓' : '2'}</span>
                     Assinatura digital
                   </span>
                   <div className="signature-input">
@@ -1754,7 +1883,7 @@ export function App() {
                       type="text"
                       placeholder="Digite seu nome completo para assinar"
                       value={signatureName}
-                      disabled={!acceptedTerms}
+                      disabled={!termAccepted}
                       onChange={(e) => setSignatureName(e.target.value)}
                     />
                   </div>
@@ -1762,6 +1891,17 @@ export function App() {
                     Ao assinar, data, hora e dispositivo são registrados para validade jurídica (LGPD).
                   </span>
                 </div>
+
+                {showTermPopup && (
+                  <TermsScrollPopup
+                    document={BOOKING_TERMS}
+                    onAccept={() => {
+                      setTermAccepted(true);
+                      setShowTermPopup(false);
+                    }}
+                    onClose={() => setShowTermPopup(false)}
+                  />
+                )}
 
                 {/* Gancho de UI para futura Autenticação Facial (Face ID).
                     Fluxo: navigator.mediaDevices.getUserMedia -> frame Base64 ->
@@ -1807,6 +1947,81 @@ export function App() {
       {installFab}
       {iosModal}
       {liveModal}
+
+      {showAvailability && (
+        <div className="modal-overlay availability-overlay" role="dialog" aria-modal="true" onClick={() => setShowAvailability(false)}>
+          <div className="availability-card" onClick={(event) => event.stopPropagation()}>
+            <div className="availability-head">
+              <h3>Escolher data e horário</h3>
+              <button type="button" className="modal-close" onClick={() => setShowAvailability(false)} aria-label="Fechar">✕</button>
+            </div>
+
+            {availabilityLoading && <p className="availability-status">Carregando agenda do estúdio...</p>}
+            {availabilityError && <p className="availability-status availability-status--error">{availabilityError}</p>}
+
+            {!availabilityLoading && !availabilityError && (
+              <>
+                <div className="availability-month-nav">
+                  <button type="button" onClick={() => setAvailabilityMonthCursor((c) => new Date(c.getFullYear(), c.getMonth() - 1, 1))}>‹</button>
+                  <strong>{availabilityMonthCursor.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}</strong>
+                  <button type="button" onClick={() => setAvailabilityMonthCursor((c) => new Date(c.getFullYear(), c.getMonth() + 1, 1))}>›</button>
+                </div>
+
+                <div className="availability-grid availability-grid--head">
+                  {['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map((d, i) => <span key={i}>{d}</span>)}
+                </div>
+                <div className="availability-grid">
+                  {buildAvailabilityMonthGrid(availabilityMonthCursor).map((dateStr, i) => {
+                    if (!dateStr) return <span key={i} className="availability-cell availability-cell--empty" />;
+                    const day = availabilityByDate[dateStr];
+                    const isPast = dateStr < new Date().toISOString().slice(0, 10);
+                    const selectable = Boolean(day?.hasAvailability) && !isPast;
+                    const known = Boolean(day) || isPast || (() => {
+                      const weekday = new Date(`${dateStr}T00:00:00`).getDay();
+                      return weekday === 0;
+                    })();
+                    return (
+                      <button
+                        key={i}
+                        type="button"
+                        disabled={!selectable}
+                        className={`availability-cell ${selectable ? 'availability-cell--free' : known ? 'availability-cell--busy' : 'availability-cell--unknown'} ${availabilitySelectedDate === dateStr ? 'availability-cell--selected' : ''}`}
+                        onClick={() => setAvailabilitySelectedDate(dateStr)}
+                      >
+                        {Number(dateStr.slice(8, 10))}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {availabilitySelectedDate && (
+                  <div className="availability-slots">
+                    <p className="availability-slots-title">
+                      Horários de {formatBookingWhen(availabilitySelectedDate, '')}
+                    </p>
+                    <div className="availability-slots-list">
+                      {(availabilityByDate[availabilitySelectedDate]?.slots ?? []).map((slot) => (
+                        <button
+                          key={slot.time}
+                          type="button"
+                          disabled={!slot.available}
+                          className={`availability-slot ${slot.available ? 'availability-slot--free' : 'availability-slot--busy'}`}
+                          onClick={() => pickAvailabilitySlot(availabilitySelectedDate, slot.time)}
+                        >
+                          {slot.time}
+                        </button>
+                      ))}
+                      {!availabilityByDate[availabilitySelectedDate] && (
+                        <span className="availability-slots-empty">Estúdio fechado neste dia.</span>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       <button
         className={`audio-floating-btn ${audioEnabled ? 'active' : ''}`}

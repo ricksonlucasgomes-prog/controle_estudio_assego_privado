@@ -1,9 +1,68 @@
 import { serve } from "https://deno.land/std@0.192.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.47.10"
+import { SMTPClient } from "https://deno.land/x/denomailer@1.6.0/mod.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
+
+// Mesma lista de EMAIL_RECIPIENTS do frontend (src/App.tsx).
+const ADMIN_RECIPIENTS = [
+  'ricksonlucasgomes@gmail.com',
+  'comunicacaoassego@gmail.com',
+  'P3dacao@gmail.com',
+]
+
+async function sendBookingNotificationEmail(requestData: any, guests: any[]) {
+  const gmailUser = Deno.env.get('GMAIL_USER')
+  const gmailPass = Deno.env.get('GMAIL_APP_PASSWORD')
+  if (!gmailUser || !gmailPass) {
+    console.warn('GMAIL_USER/GMAIL_APP_PASSWORD nao configurados; pulando envio de email.')
+    return
+  }
+  try {
+    const client = new SMTPClient({
+      connection: {
+        hostname: 'smtp.gmail.com',
+        port: 465,
+        tls: true,
+        auth: { username: gmailUser, password: gmailPass },
+      },
+    })
+    const guestsList = (guests ?? []).length
+      ? (guests ?? []).map((g: any, i: number) =>
+          `${i + 1}. ${g.name ?? '-'}\n` +
+          `   RG: ${g.rg ?? '-'}\n` +
+          `   CPF: ${g.cpf ?? '-'}\n` +
+          `   Email: ${g.email ?? '-'}\n` +
+          `   WhatsApp: ${g.whatsapp ?? '-'}\n` +
+          `   Rede social: ${g.social ?? '-'}`
+        ).join('\n\n')
+      : 'Nenhum convidado adicional.'
+
+    await client.send({
+      from: gmailUser,
+      to: ADMIN_RECIPIENTS,
+      subject: `Nova solicitacao de agendamento - ${requestData.requester_name}`,
+      content:
+        `Nova solicitacao de agendamento no Assego Studio.\n\n` +
+        `===== Dados do solicitante =====\n` +
+        `Nome: ${requestData.requester_name}\n` +
+        `RG: ${requestData.requester_rg ?? '-'}\n` +
+        `CPF: ${requestData.requester_cpf ?? '-'}\n` +
+        `Email: ${requestData.requester_email ?? '-'}\n` +
+        `WhatsApp: ${requestData.requester_whatsapp ?? '-'}\n` +
+        `Rede social: ${requestData.requester_social ?? '-'}\n\n` +
+        `Data: ${requestData.requested_date}\n` +
+        `Horario: ${requestData.requested_time}\n\n` +
+        `===== Convidados (${(guests ?? []).length}) =====\n${guestsList}\n\n` +
+        `Acesse o app para aprovar ou rejeitar: https://assegostudio.vercel.app`,
+    })
+    await client.close()
+  } catch (error) {
+    console.error('Falha ao enviar email de notificacao:', error)
+  }
 }
 
 function stableStringify(value: unknown): string {
@@ -131,6 +190,8 @@ serve(async (req) => {
       await supabase.from('studio_booking_requests').delete().eq('id', requestData.id)
       throw new Error(`Falha ao registrar assinatura digital: ${signatureError.message}`)
     }
+
+    await sendBookingNotificationEmail(requestData, guests ?? [])
 
     return new Response(
       JSON.stringify({ success: true, booking_id: requestData.id, signature_hash: payloadHash }),
