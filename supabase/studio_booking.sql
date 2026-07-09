@@ -68,6 +68,9 @@ drop policy if exists "booking_req_insert_self"          on public.studio_bookin
 drop policy if exists "booking_req_select_own_or_admin"  on public.studio_booking_requests;
 drop policy if exists "booking_req_update_admin"         on public.studio_booking_requests;
 drop policy if exists "booking_req_delete_own_or_admin"  on public.studio_booking_requests;
+drop policy if exists "Users can insert own bookings"    on public.studio_booking_requests;
+drop policy if exists "Users can view own bookings"      on public.studio_booking_requests;
+drop policy if exists "Admins can view all bookings"     on public.studio_booking_requests;
 
 -- Usuário só cria solicitação em seu próprio nome.
 create policy "booking_req_insert_self" on public.studio_booking_requests
@@ -98,6 +101,8 @@ using (requester_id = auth.uid() or public.current_user_role() = 'admin');
 drop policy if exists "booking_part_insert_own"         on public.studio_booking_participants;
 drop policy if exists "booking_part_select_own_or_admin" on public.studio_booking_participants;
 drop policy if exists "booking_part_delete_own_or_admin" on public.studio_booking_participants;
+drop policy if exists "Users can insert participants"    on public.studio_booking_participants;
+drop policy if exists "Admins can view all participants" on public.studio_booking_participants;
 
 create policy "booking_part_insert_own" on public.studio_booking_participants
 for insert to authenticated
