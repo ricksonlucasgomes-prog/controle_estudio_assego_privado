@@ -266,6 +266,17 @@ export function App() {
 
   const role: UserRole = profile?.role ?? 'viewer';
   const canManage = role === 'admin' || role === 'borrower';
+  // A aba Conferência só aparece para quem gerencia (admin) ou pode
+  // solicitar retirada de equipamento (borrower). Viewer não a vê.
+  const visibleTabs = useMemo(
+    () => MAIN_TABS.filter((tab) => tab.id !== 'conference' || canManage),
+    [canManage],
+  );
+  // Se o papel do usuário for rebaixado enquanto ele está na Conferência,
+  // tira ele da aba que deixou de existir para o perfil dele.
+  useEffect(() => {
+    if (activeTab === 'conference' && !canManage) setActiveTab('agenda');
+  }, [activeTab, canManage]);
   const userName = profile?.full_name || (userEmail ? userEmail.split('@')[0] : '');
   const isAuthed = Boolean(userId);
   const driveFolder = studio.driveFolder || DEFAULT_DRIVE_FOLDER;
@@ -1505,7 +1516,7 @@ export function App() {
       {/* MENUS E MODAIS NATIVOS         */}
       {/* ============================== */}
       <nav className="bottom-tabs" aria-label="Navegação principal do app">
-        {MAIN_TABS.map((tab) => {
+        {visibleTabs.map((tab) => {
           const Icon = tab.icon;
           const selected = activeTab === tab.id;
           return (
