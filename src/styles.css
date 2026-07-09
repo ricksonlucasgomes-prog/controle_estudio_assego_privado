@@ -949,22 +949,23 @@ footer {
 .bottom-tabs {
   position: fixed;
   left: 50%;
-  bottom: 14px;
+  bottom: calc(14px + env(safe-area-inset-bottom));
   z-index: 45;
   width: min(720px, calc(100% - 28px));
   transform: translateX(-50%);
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
   gap: 8px;
   padding: 8px;
   border: 1px solid rgba(var(--white-rgb), .14);
   border-radius: 24px;
-  background: rgba(5, 10, 24, .88);
-  box-shadow: 0 18px 54px rgba(var(--black-rgb), .46);
-  backdrop-filter: blur(18px);
+  background: rgba(5, 10, 24, .8);
+  box-shadow: 0 12px 36px rgba(var(--black-rgb), .32);
+  backdrop-filter: blur(14px);
 }
 
 .bottom-tabs button {
+  position: relative;
   min-width: 0;
   min-height: 58px;
   display: grid;
@@ -977,6 +978,7 @@ footer {
   cursor: pointer;
   font-weight: 800;
   letter-spacing: .01em;
+  transition: color .18s ease;
 }
 
 .bottom-tabs button:hover {
@@ -985,9 +987,17 @@ footer {
 }
 
 .bottom-tabs button.active {
-  color: #06101f;
-  background: linear-gradient(135deg, #fff140, #ffdf00);
-  box-shadow: 0 10px 26px rgba(var(--accent-bright-rgb), .22);
+  color: var(--accent-bright);
+}
+
+.bottom-tabs button.active::before {
+  content: '';
+  position: absolute;
+  top: 6px;
+  width: 20px;
+  height: 3px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-bright);
 }
 
 .bottom-tabs span {
