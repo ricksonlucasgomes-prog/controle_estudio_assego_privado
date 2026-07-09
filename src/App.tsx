@@ -858,7 +858,7 @@ export function App() {
         userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
       };
 
-      const response = await fetch('https://nqjaxsehplhbusrleuhd.supabase.co/functions/v1/submit-booking', {
+      const response = await fetch(edgeFunctionUrl('submit-booking'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
