@@ -1313,18 +1313,27 @@ export function App() {
         {/* ABA: AO VIVO                  */}
         {/* ============================== */}
         <div className={`tab-panel ${activeTab === 'camera' ? 'active' : ''}`}>
-        <article className="card">
-          <div className="card-head">
-            <h2>Ao Vivo</h2>
-          </div>
-          <div className="video-box camera-frame">
-            <button type="button" className="camera-start" onClick={() => setCameraOn(true)}>
-              <span className="camera-start-icon"><Video aria-hidden="true" size={30} strokeWidth={2.4} /></span>
-              <span className="camera-start-text">Estúdio em tempo real</span>
-              <span className="camera-start-sub">Toque para abrir a transmissão ao vivo</span>
-            </button>
-          </div>
-        </article>
+          <article className="card premium-card">
+            <div className="agenda-head">
+              <div>
+                <p className="eyebrow">Transmissão oficial</p>
+                <h2>Ao Vivo no Assego Studio</h2>
+              </div>
+              <span className="live-badge camera-rec">YouTube</span>
+            </div>
+
+            <div className="video-box camera-frame">
+              <button type="button" className="camera-start" onClick={() => setCameraOn(true)}>
+                <span className="camera-start-icon">
+                  <Video aria-hidden="true" size={30} strokeWidth={2.4} />
+                </span>
+                <span className="camera-start-text">Assistir transmissão</span>
+                <span className="camera-start-sub">
+                  Acompanhe podcasts ao vivo e conteúdos transmitidos direto do estúdio.
+                </span>
+              </button>
+            </div>
+          </article>
         </div>
 
 
