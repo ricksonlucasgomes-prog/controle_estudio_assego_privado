@@ -313,6 +313,10 @@ export function App() {
   const [cameraOn, setCameraOn] = useState(false);
   const [accessRequestBusy, setAccessRequestBusy] = useState(false);
   const [accessRequestInfo, setAccessRequestInfo] = useState('');
+  // Papel que o próprio usuário está pedindo em "Pedir liberação". Quem
+  // decide se libera é sempre um admin/developer manualmente no SQL Editor
+  // — isto só define o texto do pedido enviado por email.
+  const [requestedRoleChoice, setRequestedRoleChoice] = useState<'borrower' | 'admin'>('borrower');
   const [selectedPodcastId, setSelectedPodcastId] = useState(PODCAST_EPISODES[0]?.id ?? '');
   const [podcastFilter, setPodcastFilter] = useState<'all' | 'live' | 'recorded'>('all');
   const [audioEnabled, setAudioEnabled] = useState(false);
@@ -702,7 +706,7 @@ export function App() {
         body: JSON.stringify({
           name: userName,
           email: userEmail,
-          requestedRole: userEmail.toLowerCase() === 'ricksonlucasgomes@gmail.com' ? 'admin' : 'borrower',
+          requestedRole: requestedRoleChoice,
         }),
       });
 
@@ -1709,6 +1713,17 @@ export function App() {
           <span>
             Seu acesso está como visualização. Um admin precisa liberar seu perfil para retirar equipamentos e salvar conferências.
           </span>
+          <label className="viewer-banner__role-choice">
+            Pedir acesso de
+            <select
+              value={requestedRoleChoice}
+              onChange={(event) => setRequestedRoleChoice(event.target.value === 'admin' ? 'admin' : 'borrower')}
+              disabled={accessRequestBusy}
+            >
+              <option value="borrower">Retirada de equipamento</option>
+              <option value="admin">Admin</option>
+            </select>
+          </label>
           <button className="btn small" type="button" onClick={requestAccess} disabled={accessRequestBusy}>
             {accessRequestBusy ? 'Enviando...' : 'Pedir liberação'}
           </button>

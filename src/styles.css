@@ -1662,6 +1662,24 @@ footer {
   font-size: 13px;
 }
 
+.viewer-banner__role-choice {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.viewer-banner__role-choice select {
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--warn);
+  background: rgba(var(--bg-rgb), .55);
+  color: var(--text);
+  font: inherit;
+}
+
 /* ===== Botao flutuante Instalar (PWA) ===== */
 .install-fab {
   position: fixed;
