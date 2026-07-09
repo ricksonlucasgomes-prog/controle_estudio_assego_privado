@@ -1315,7 +1315,7 @@ export function App() {
         <div className={`tab-panel ${activeTab === 'camera' ? 'active' : ''}`}>
         <article className="card">
           <div className="card-head">
-            <h2>Câmera ao vivo</h2>
+            <h2>Ao Vivo</h2>
           </div>
           <div className="video-box camera-frame">
             <button type="button" className="camera-start" onClick={() => setCameraOn(true)}>
