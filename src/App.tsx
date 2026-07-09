@@ -1078,7 +1078,7 @@ export function App() {
         <form className="login-card" onSubmit={handleEmailAuth}>
           <div className="logo-chip"><img src="/logo.png" alt="ASSEGO PM & BM" /></div>
           <p className="eyebrow">ASSEGO PM &amp; BM</p>
-          <h1>Agenda e estúdio</h1>
+          <h1>Assego Studio</h1>
 
           <div className="auth-tabs">
             <button type="button" className={authMode === 'login' ? 'active' : ''} onClick={() => switchAuthMode('login')}>Entrar</button>
@@ -1144,7 +1144,7 @@ export function App() {
         <div className="logo-chip"><img src="/logo.png" alt="ASSEGO PM & BM" /></div>
         <div className="brand-copy">
           <p className="eyebrow">ASSEGO PM &amp; BM</p>
-          <h1><strong>Agenda e estúdio</strong></h1>
+          <h1><strong>Assego Studio</strong></h1>
           <p className="brand-subtitle">Agenda, cautela e conferência diária em um painel interno.</p>
           <div className="brand-metrics" aria-label="Resumo do estúdio">
             <span><strong>{ALL_EQUIPMENT.length}</strong> itens</span>
@@ -1186,7 +1186,7 @@ export function App() {
         <div className={`tab-panel ${activeTab === 'agenda' ? 'active' : ''}`}>
           <article className="card premium-card">
             <div className="agenda-head">
-              <h2>Agenda do Estúdio ASSEGO</h2>
+              <h2>Assego Studio</h2>
               {role === 'admin' ? (
                 <button className="btn btn-yellow" type="button" onClick={() => setShowBookingModal(true)}>+ Gerenciar / Nova Reserva</button>
               ) : (
