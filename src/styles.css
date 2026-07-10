@@ -68,7 +68,7 @@ a {
 .wrap {
   width: min(1240px, calc(100% - 32px));
   margin: 0 auto;
-  padding: 24px 0 112px;
+  padding: 24px 0 40px;
 }
 
 .login-screen {
@@ -196,6 +196,21 @@ footer {
   gap: 10px;
   flex: 1 1 auto;
   min-width: 0;
+}
+
+/* .brand-id agora é um <button> que leva de volta à Agenda (início). */
+.brand-id--home {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.brand-id--home:hover .brand-copy h1 {
+  color: var(--accent-bright);
 }
 
 .brand-id .logo-chip {
@@ -1499,16 +1514,8 @@ footer {
   }
 
   .wrap {
-    margin: 0 0 0 var(--side-nav-width);
-    width: min(1240px, calc(100% - var(--side-nav-width) - 32px));
-    padding-left: 16px;
-    transition: margin-left .18s ease, width .18s ease;
-  }
-
-  .wrap:has(+ .side-nav--collapsed),
-  .wrap:has(.side-nav--collapsed) {
-    margin-left: var(--side-nav-width-collapsed);
-    width: min(1240px, calc(100% - var(--side-nav-width-collapsed) - 32px));
+    width: min(1240px, calc(100% - 32px));
+    margin: 0 auto;
   }
 }
 
@@ -1557,7 +1564,7 @@ footer {
 @media (max-width: 620px) {
   .wrap {
     width: min(100% - 20px, 1240px);
-    padding: 10px 0 104px;
+    padding: 10px 0 32px;
   }
 
   .topbar,
@@ -3159,14 +3166,9 @@ body::before {
   }
 
   .wrap {
-    width: min(1320px, calc(100% - var(--side-nav-width) - 34px));
-    margin: 0 0 0 var(--side-nav-width);
-    padding: 26px 16px 96px;
-  }
-
-  .wrap:has(.side-nav--collapsed) {
-    width: min(1320px, calc(100% - var(--side-nav-width-collapsed) - 34px));
-    margin-left: var(--side-nav-width-collapsed);
+    width: min(1320px, calc(100% - 34px));
+    margin: 0 auto;
+    padding: 26px 16px 40px;
   }
 
   .status-footer {
@@ -3684,16 +3686,10 @@ body::before {
 
 @media (min-width: 1180px) {
   .wrap {
-    width: calc(100% - var(--side-nav-width));
-    max-width: 1680px;
-    margin-left: var(--side-nav-width);
-    padding: 20px 28px 72px;
-  }
-
-  .wrap:has(.side-nav--collapsed) {
-    width: calc(100% - var(--side-nav-width-collapsed));
-    max-width: 1760px;
-    margin-left: var(--side-nav-width-collapsed);
+    width: 100%;
+    max-width: 1320px;
+    margin: 0 auto;
+    padding: 20px 28px 40px;
   }
 
   .assego-marquee {

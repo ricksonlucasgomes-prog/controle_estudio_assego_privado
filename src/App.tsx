@@ -1,5 +1,5 @@
 import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from 'react';
-import { Bell, ClipboardCheck, PackageCheck, Video, CalendarDays, Camera, LogOut, ChevronLeft, ChevronRight, Clock3, Radio, ShieldCheck, Package, ArrowRight, Activity, type LucideIcon } from 'lucide-react';
+import { Bell, ClipboardCheck, PackageCheck, Video, CalendarDays, Camera, LogOut, Clock3, Radio, ShieldCheck, Package, ArrowRight, Activity, type LucideIcon } from 'lucide-react';
 import { edgeFunctionUrl, supabase, supabaseConfigured, type Profile, type UserRole } from './supabase';
 import { TermsScrollPopup } from './TermsScrollPopup';
 import { BOOKING_TERMS, EQUIPMENT_TERMS } from './termsContent';
@@ -295,26 +295,7 @@ export function App() {
   // decide se libera é sempre um admin/developer manualmente no SQL Editor
   // — isto só define o texto do pedido enviado por email.
   const [requestedRoleChoice, setRequestedRoleChoice] = useState<'borrower' | 'admin'>('borrower');
-  // Preferência de sidebar recolhida (só desktop). Persistida por aparelho.
-  const [sideNavCollapsed, setSideNavCollapsed] = useState<boolean>(() => {
-    try {
-      return window.localStorage.getItem('assego-sidenav-collapsed-v1') === '1';
-    } catch {
-      return false;
-    }
-  });
-  function toggleSideNav() {
-    setSideNavCollapsed((prev) => {
-      const next = !prev;
-      try {
-        window.localStorage.setItem('assego-sidenav-collapsed-v1', next ? '1' : '0');
-      } catch {
-        // localStorage indisponível (ex.: modo privado); segue só em memória.
-      }
-      return next;
-    });
-  }
-  
+
   // A Agenda é a entrada principal do painel.
   const [activeTab, setActiveTab] = useState<MainTab>('agenda');
 
@@ -1368,13 +1349,18 @@ export function App() {
 
       <header className="topbar brand-hero">
         <div className="brand-top">
-          <div className="brand-id">
+          <button
+            type="button"
+            className="brand-id brand-id--home"
+            onClick={() => setActiveTab('agenda')}
+            aria-label="Ir para a Agenda (início)"
+          >
             <div className="logo-chip"><img src="/logo.png" alt="ASSEGO PM & BM" /></div>
             <div className="brand-copy">
               <p className="eyebrow">ASSEGO PM &amp; BM</p>
               <h1>Assego Studio</h1>
             </div>
-          </div>
+          </button>
           <div className="session">
             {isAdmin && (
               <div className="notif-wrap">
@@ -2346,69 +2332,9 @@ export function App() {
       {/* ============================== */}
       {/* MENUS E MODAIS NATIVOS         */}
       {/* ============================== */}
-      {/* Navegação em coluna à esquerda, só visível em telas desktop
-          (ver @media min-width em styles.css). No mobile, .bottom-tabs
-          continua sendo a navegação real. */}
-      <nav
-        className={`side-nav ${sideNavCollapsed ? 'side-nav--collapsed' : ''}`}
-        aria-label="Navegação principal do app (desktop)"
-      >
-        <div className="side-nav__brand">
-          <div className="logo-chip"><img src="/logo.png" alt="ASSEGO PM & BM" /></div>
-          <div className="side-nav__brand-copy">
-            <p className="eyebrow">ASSEGO PM &amp; BM</p>
-            <strong>Assego Studio</strong>
-          </div>
-        </div>
-        <div className="side-nav__tabs">
-          {visibleTabs.map((tab) => {
-            const Icon = tab.icon;
-            const selected = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                className={selected ? 'active' : ''}
-                aria-current={selected ? 'page' : undefined}
-                title={sideNavCollapsed ? tab.label : undefined}
-                onClick={() => setActiveTab(tab.id)}
-              >
-                <Icon aria-hidden="true" size={20} strokeWidth={2.2} />
-                <span>{tab.label}</span>
-              </button>
-            );
-          })}
-        </div>
-        <button
-          type="button"
-          className="side-nav__collapse"
-          onClick={toggleSideNav}
-          aria-label={sideNavCollapsed ? 'Expandir menu' : 'Recolher menu'}
-          title={sideNavCollapsed ? 'Expandir menu' : 'Recolher menu'}
-        >
-          {sideNavCollapsed ? <ChevronRight size={16} strokeWidth={2.4} aria-hidden="true" /> : <ChevronLeft size={16} strokeWidth={2.4} aria-hidden="true" />}
-          <span>Recolher</span>
-        </button>
-      </nav>
-
-      <nav className="bottom-tabs" aria-label="Navegação principal do app">
-        {visibleTabs.map((tab) => {
-          const Icon = tab.icon;
-          const selected = activeTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              className={selected ? 'active' : ''}
-              aria-current={selected ? 'page' : undefined}
-              onClick={() => setActiveTab(tab.id)}
-            >
-              <Icon aria-hidden="true" size={22} strokeWidth={2.2} />
-              <span>{tab.label}</span>
-            </button>
-          );
-        })}
-      </nav>
+      {/* Navegação principal fica na área "Acesso rápido" do painel Agenda.
+          O cabeçalho (logo/título) leva de volta à Agenda a partir de
+          qualquer aba. */}
       {installFab}
       {iosModal}
 
