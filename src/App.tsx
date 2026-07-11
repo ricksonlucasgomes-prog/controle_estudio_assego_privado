@@ -1723,7 +1723,7 @@ export function App() {
             <article className="dashboard-hero">
               <div className="dashboard-hero__copy">
                 <p className="eyebrow">Painel operacional</p>
-                <h2>Seu estúdio em uma única visão.</h2>
+                <h2>O Estúdio da ASSEGO em um única visão</h2>
                 <p>Organize reservas, gravações, conferências e equipamentos com segurança.</p>
               </div>
               <div className="dashboard-hero__actions">
