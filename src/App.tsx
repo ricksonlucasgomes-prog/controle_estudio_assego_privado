@@ -3,6 +3,7 @@ import { Bell, ClipboardCheck, PackageCheck, Video, CalendarDays, Camera, LogOut
 import { edgeFunctionUrl, supabase, supabaseConfigured, type Profile, type UserRole } from './supabase';
 import { TermsScrollPopup } from './TermsScrollPopup';
 import { BOOKING_TERMS, EQUIPMENT_TERMS } from './termsContent';
+import { LandingPage } from './LandingPage';
 import {
   DEFAULT_DRIVE_FOLDER,
   STUDIO_KEY,
@@ -259,6 +260,7 @@ export function App() {
   const [profilePhotos, setProfilePhotos] = useState<Record<string, string>>(() => readJson(PROFILE_KEY, {}));
 
   // Autenticacao (Supabase)
+  const [showLogin, setShowLogin] = useState(false);
   const [authReady, setAuthReady] = useState(false);
   const [userId, setUserId] = useState('');
   const [userEmail, setUserEmail] = useState('');
@@ -277,6 +279,22 @@ export function App() {
   const [authBusy, setAuthBusy] = useState(false);
   const [confirmationEmail, setConfirmationEmail] = useState('');
   const [resendBusy, setResendBusy] = useState(false);
+
+  useEffect(() => {
+    function handlePopState() {
+      setShowLogin(window.history.state?.assegoView === 'login');
+    }
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  function openLogin() {
+    if (window.history.state?.assegoView !== 'login') {
+      window.history.pushState({ ...window.history.state, assegoView: 'login' }, '');
+    }
+    setShowLogin(true);
+  }
 
   // Instalacao (PWA)
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
@@ -669,6 +687,7 @@ export function App() {
     setFormEmail('');
     setFormPass('');
     setFormName('');
+    setShowLogin(false);
   }
 
   async function requestAccess() {
@@ -1352,6 +1371,10 @@ export function App() {
         {iosModal}
       </main>
     );
+  }
+
+  if (!isAuthed && !showLogin) {
+    return <LandingPage onLogin={openLogin} />;
   }
 
   if (!isAuthed) {
