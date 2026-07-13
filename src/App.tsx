@@ -1,5 +1,5 @@
 import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from 'react';
-import { Bell, ClipboardCheck, PackageCheck, Video, CalendarDays, Camera, LogOut, ChevronRight, Clock3, Radio, ShieldCheck, Package, ArrowRight, Activity, ScanFace, type LucideIcon } from 'lucide-react';
+import { Bell, ClipboardCheck, PackageCheck, Video, CalendarDays, Camera, LogOut, ChevronRight, Clock3, Radio, ShieldCheck, Package, ArrowRight, Activity, ScanFace, X, type LucideIcon } from 'lucide-react';
 import { edgeFunctionUrl, supabase, supabaseConfigured, type Profile, type UserRole } from './supabase';
 import { TermsScrollPopup } from './TermsScrollPopup';
 import { BOOKING_TERMS, EQUIPMENT_TERMS } from './termsContent';
@@ -2334,11 +2334,13 @@ export function App() {
           <div className="modal-content" onClick={(event) => event.stopPropagation()}>
             <div className="modal-head">
               <h3>Formulário de Acesso e Gravação</h3>
-              <button className="modal-close" type="button" onClick={() => setShowBookingModal(false)} aria-label="Fechar">✕</button>
+              <button className="modal-close" type="button" onClick={() => setShowBookingModal(false)} aria-label="Fechar">
+                <X size={20} aria-hidden="true" />
+              </button>
             </div>
 
             <div className="legal-notice-box">
-              <strong>⚠️ Controle de Acesso Obrigatório (LGPD)</strong>
+              <strong>Controle de Acesso Obrigatório (LGPD)</strong>
               <button type="button" className="legal-notice-box__toggle" onClick={() => setShowLegalPopup(!showLegalPopup)}>
                 {showLegalPopup ? 'Ocultar embasamento jurídico' : 'Ler embasamento jurídico'}
               </button>
@@ -2440,17 +2442,17 @@ export function App() {
               <div className="signature-gate">
                 <div className={`signature-step ${termAccepted ? 'done' : ''}`}>
                   <span className="signature-step__label">
-                    <span className="signature-step__num">{termAccepted ? '✓' : '1'}</span>
+                    <span className="signature-step__num">1</span>
                     Leia o Termo de Uso até o final e clique em Concordo
                   </span>
                   <button type="button" className="term-download" onClick={() => setShowTermPopup(true)}>
-                    {termAccepted ? '✓ Termo de Uso aceito — ler novamente' : '📄 Ler Termo de Uso'}
+                    {termAccepted ? 'Termo de Uso aceito — ler novamente' : 'Ler Termo de Uso'}
                   </button>
                 </div>
 
                 <div className={`signature-step ${signatureName.trim().length >= 3 ? 'done' : ''}`}>
                   <span className="signature-step__label">
-                    <span className="signature-step__num">{signatureName.trim().length >= 3 ? '✓' : '2'}</span>
+                    <span className="signature-step__num">2</span>
                     Assinatura digital
                   </span>
                   <div className="signature-input">
@@ -2482,7 +2484,6 @@ export function App() {
                     Fluxo: navigator.mediaDevices.getUserMedia -> frame Base64 ->
                     Edge Function -> AWS Rekognition/Azure Face. */}
                 <div className="faceid-placeholder" aria-hidden="true">
-                  <span aria-hidden="true">📷</span>
                   Validação facial (Face ID) — em breve, antes do envio.{' '}
                 </div>
               </div>
