@@ -16,6 +16,12 @@ verify_jwt = false
 import_map = "./functions/decide-booking/deno.json"
 entrypoint = "./functions/decide-booking/index.ts"
 
+[functions.process-notification-outbox]
+enabled = true
+verify_jwt = false
+import_map = "./functions/process-notification-outbox/deno.json"
+entrypoint = "./functions/process-notification-outbox/index.ts"
+
 [functions.studio-availability]
 enabled = true
 verify_jwt = false
