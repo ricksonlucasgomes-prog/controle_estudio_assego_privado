@@ -2437,6 +2437,13 @@ footer {
 
 .legal-notice-box strong { color: var(--accent-bright); }
 
+.legal-notice-box__presidency {
+  margin: 8px 0 0;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 .legal-notice-box__toggle {
   margin-top: 6px;
   background: none;

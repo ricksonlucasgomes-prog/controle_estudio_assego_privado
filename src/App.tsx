@@ -336,6 +336,7 @@ export function App() {
   const [termAccepted, setTermAccepted] = useState(false);
   const [signatureName, setSignatureName] = useState('');
   const [bookingBusy, setBookingBusy] = useState(false);
+  const bookingIdempotencyKey = useRef(crypto.randomUUID());
 
   // Popup de disponibilidade (agenda real do estúdio via studio-availability).
   const [showAvailability, setShowAvailability] = useState(false);
@@ -370,6 +371,7 @@ export function App() {
   const [equipmentRequestJustification, setEquipmentRequestJustification] = useState('');
   const [equipmentRequestBusy, setEquipmentRequestBusy] = useState(false);
   const [equipmentRequestInfo, setEquipmentRequestInfo] = useState('');
+  const equipmentRequestIdempotencyKey = useRef(crypto.randomUUID());
 
   // Painel de admin: solicitações de equipamento pedidas por não-admins.
   const [equipmentRequests, setEquipmentRequests] = useState<EquipmentRequest[]>([]);
@@ -1035,7 +1037,8 @@ export function App() {
   const signatureReady = termAccepted && signatureName.trim().length >= 3;
 
   function resetBookingForm() {
-    setRequesterData({ name: '', rg: '', cpf: '', email: '', whatsapp: '', social: '', date: '', time: '' });
+    bookingIdempotencyKey.current = crypto.randomUUID();
+    setRequesterData({ name: '', rg: '', cpf: '', email: userEmail, whatsapp: '', social: '', date: '', time: '' });
     setGuestsData([]);
     setShowTermPopup(false);
     setTermAccepted(false);
@@ -1125,7 +1128,7 @@ export function App() {
       const signature = {
         fullName: signatureName.trim(),
         acceptedTerms: true,
-        termDocument: 'Termo_de_Uso_Assego_v2.pdf',
+        termDocument: 'Termo_de_Uso_Assego.pdf',
         termRead: true,
         signedByUserId: userId,
         signedByEmail: userEmail,
@@ -1145,9 +1148,11 @@ export function App() {
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${sessionData.session.access_token}`,
+            'Idempotency-Key': bookingIdempotencyKey.current,
           },
           body: JSON.stringify({
-            requester: requesterData,
+            idempotencyKey: bookingIdempotencyKey.current,
+            requester: { ...requesterData, email: userEmail },
             guests: guestsData,
             booking_details: { date: requesterData.date, time: requesterData.time },
             signature,
@@ -1164,12 +1169,18 @@ export function App() {
         window.clearTimeout(timeout);
       }
 
+      const result = await response.json().catch(() => ({}));
       if (!response.ok) {
-        const result = await response.json().catch(() => ({}));
         throw new Error(result.error || 'Erro no servidor. Tente novamente mais tarde.');
       }
 
-      alert('Sucesso! Sua solicitação assinada foi enviada e está sob análise da diretoria.');
+      if (result.notification_status === 'pending_retry') {
+        alert('Solicitação registrada e assinada. O aviso por email está aguardando uma nova tentativa automática.');
+      } else if (result.notification_status === 'sent') {
+        alert('Sucesso! Sua solicitação assinada foi enviada e o aviso por email foi processado.');
+      } else {
+        alert('Sucesso! Sua solicitação assinada foi enviada e está sob análise da diretoria.');
+      }
       setShowBookingModal(false);
       resetBookingForm();
     } catch (error: any) {
@@ -1285,6 +1296,7 @@ export function App() {
   // Usuário sem admin/borrower pedindo equipamento mesmo assim, com
   // justificativa. Dispara email aos 3 admins via edge function.
   function openEquipmentRequestForm(equipmentId: string) {
+    equipmentRequestIdempotencyKey.current = crypto.randomUUID();
     setEquipmentRequestTarget(equipmentId);
     setEquipmentRequestJustification('');
     setEquipmentRequestInfo('');
@@ -1312,8 +1324,13 @@ export function App() {
 
       const response = await fetch(edgeFunctionUrl('request-equipment'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+          'Idempotency-Key': equipmentRequestIdempotencyKey.current,
+        },
         body: JSON.stringify({
+          idempotencyKey: equipmentRequestIdempotencyKey.current,
           equipmentId: equipmentRequestTarget,
           equipmentName: equipmentName(equipmentRequestTarget),
           justification,
@@ -2341,6 +2358,9 @@ export function App() {
 
             <div className="legal-notice-box">
               <strong>Controle de Acesso Obrigatório (LGPD)</strong>
+              <p className="legal-notice-box__presidency">
+                A solicitação destes dados pessoais é um pedido da Presidência da ASSEGO para o controle institucional e a segurança dos agendamentos do estúdio.
+              </p>
               <button type="button" className="legal-notice-box__toggle" onClick={() => setShowLegalPopup(!showLegalPopup)}>
                 {showLegalPopup ? 'Ocultar embasamento jurídico' : 'Ler embasamento jurídico'}
               </button>
@@ -2360,7 +2380,7 @@ export function App() {
                 </div>
                 <div className="form-group">
                   <label htmlFor="req-email">E-mail</label>
-                  <input id="req-email" required type="email" placeholder="voce@email.com" value={requesterData.email} onChange={(e) => setRequesterData({ ...requesterData, email: e.target.value })} />
+                  <input id="req-email" required readOnly type="email" placeholder="voce@email.com" value={userEmail} />
                 </div>
                 <div className="form-group">
                   <label htmlFor="req-whats">WhatsApp</label>
