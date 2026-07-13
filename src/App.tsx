@@ -2357,16 +2357,37 @@ export function App() {
             </div>
 
             <div className="legal-notice-box">
-              <strong>Controle de Acesso Obrigatório (LGPD)</strong>
-              <p className="legal-notice-box__presidency">
-                A solicitação destes dados pessoais é um pedido da Presidência da ASSEGO para o controle institucional e a segurança dos agendamentos do estúdio.
+              <div className="legal-notice-box__header">
+                <span className="legal-notice-box__icon" aria-hidden="true">
+                  <ShieldCheck size={22} />
+                </span>
+                <div>
+                  <span className="legal-notice-box__eyebrow">Solicitação institucional</span>
+                  <h4>Coleta de dados solicitada pela Presidência da ASSEGO</h4>
+                </div>
+              </div>
+              <p className="legal-notice-box__summary">
+                Estas informações são necessárias para identificar os responsáveis, organizar o acesso e manter a segurança dos agendamentos e gravações realizados no estúdio.
               </p>
-              <button type="button" className="legal-notice-box__toggle" onClick={() => setShowLegalPopup(!showLegalPopup)}>
-                {showLegalPopup ? 'Ocultar embasamento jurídico' : 'Ler embasamento jurídico'}
+              <div className="legal-notice-box__privacy">
+                <ShieldCheck size={16} aria-hidden="true" />
+                <span>Dados de uso restrito à gestão autorizada da ASSEGO.</span>
+              </div>
+              <button
+                type="button"
+                className="legal-notice-box__toggle"
+                aria-expanded={showLegalPopup}
+                aria-controls="booking-legal-basis"
+                onClick={() => setShowLegalPopup(!showLegalPopup)}
+              >
+                <span>{showLegalPopup ? 'Ocultar base legal e política de uso' : 'Consultar base legal e política de uso'}</span>
+                {showLegalPopup
+                  ? <ChevronUp size={16} aria-hidden="true" />
+                  : <ChevronDown size={16} aria-hidden="true" />}
               </button>
               {showLegalPopup && (
-                <div className="legal-notice-box__body">
-                  Para garantir a segurança orgânica das instalações da ASSEGO, a coleta destes dados é amparada pela <strong>Lei nº 13.709/2018</strong>, Art. 7º, incisos VII e IX. Uso restrito à diretoria.
+                <div id="booking-legal-basis" className="legal-notice-box__body">
+                  <strong>Base legal:</strong> para garantir a segurança orgânica das instalações da ASSEGO, o tratamento destes dados observa a <strong>Lei nº 13.709/2018 (LGPD)</strong>, especialmente o Art. 7º, incisos VII e IX. O acesso às informações é limitado às pessoas autorizadas.
                 </div>
               )}
             </div>
