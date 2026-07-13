@@ -74,7 +74,6 @@ function validatePayload(body: JsonRecord): {
 
   const requiredRequester = [
     text(requester.name, 160),
-    text(requester.rg, 30),
     text(requester.cpf, 20),
     text(requester.whatsapp, 30),
     text(requester.social, 120),
@@ -152,6 +151,7 @@ function validatePayload(body: JsonRecord): {
   const normalizedBooking: JsonRecord = {
     date,
     time,
+    endTime,
     scheduleType: time > '17:00' ? 'after_hours' : 'regular',
     program: {
       name: programName,
@@ -164,19 +164,32 @@ function validatePayload(body: JsonRecord): {
     materialLinks: normalizedLinks,
   }
 
-  for (const guest of guests) {
-    const requiredGuest = [
-      text(guest.name, 160),
-      text(guest.rg, 30),
-      text(guest.cpf, 20),
-      text(guest.email, 254),
-      text(guest.whatsapp, 30),
-      text(guest.social, 120),
-    ]
+  const normalizedRequester: JsonRecord = {
+    name: text(requester.name, 160),
+    cpf: text(requester.cpf, 20),
+    whatsapp: text(requester.whatsapp, 30),
+    social: text(requester.social, 120),
+  }
+  const normalizedGuests = guests.map((guest) => ({
+    name: text(guest.name, 160),
+    cpf: text(guest.cpf, 20),
+    email: text(guest.email, 254).toLowerCase(),
+    whatsapp: text(guest.whatsapp, 30),
+    social: text(guest.social, 120),
+  }))
+
+  for (const guest of normalizedGuests) {
+    const requiredGuest = [guest.name, guest.cpf, guest.email, guest.whatsapp, guest.social]
     if (requiredGuest.some((value) => value.length < 2)) throw new Error('GUEST_INVALID')
   }
 
-  return { requester, guests, booking: normalizedBooking, signature, idempotencyKey }
+  return {
+    requester: normalizedRequester,
+    guests: normalizedGuests,
+    booking: normalizedBooking,
+    signature,
+    idempotencyKey,
+  }
 }
 
 function clientIp(req: Request): string {
@@ -249,7 +262,6 @@ async function sendBookingNotificationEmail(
   const guestsList = guests.length
     ? guests.map((guest, index) =>
         `${index + 1}. ${text(guest.name, 160) || '-'}\n` +
-        `   RG: ${text(guest.rg, 30) || '-'}\n` +
         `   CPF: ${text(guest.cpf, 20) || '-'}\n` +
         `   Email: ${text(guest.email, 254) || '-'}\n` +
         `   WhatsApp: ${text(guest.whatsapp, 30) || '-'}\n` +
@@ -283,7 +295,6 @@ async function sendBookingNotificationEmail(
         `Nova solicitacao de agendamento no Assego Studio.\n\n` +
         `===== Dados do solicitante =====\n` +
         `Nome: ${text(requester.name, 160) || '-'}\n` +
-        `RG: ${text(requester.rg, 30) || '-'}\n` +
         `CPF: ${text(requester.cpf, 20) || '-'}\n` +
         `Email: ${text(requester.email, 254) || '-'}\n` +
         `WhatsApp: ${text(requester.whatsapp, 30) || '-'}\n` +

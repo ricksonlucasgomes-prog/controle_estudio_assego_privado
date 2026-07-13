@@ -394,9 +394,9 @@ export function App() {
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [showLegalPopup, setShowLegalPopup] = useState(false);
   const [requesterData, setRequesterData] = useState({
-    name: '', rg: '', cpf: '', email: '', whatsapp: '', social: '', date: '', time: '', endTime: ''
+    name: '', cpf: '', email: '', whatsapp: '', social: '', date: '', time: '', endTime: ''
   });
-  const [guestsData, setGuestsData] = useState<{name: string, rg: string, cpf: string, email: string, whatsapp: string, social: string}[]>([]);
+  const [guestsData, setGuestsData] = useState<{name: string, cpf: string, email: string, whatsapp: string, social: string}[]>([]);
 
   // 5. Gate jurídico: leitura completa do Termo (popup com scroll obrigatório) + assinatura digital
   const [showTermPopup, setShowTermPopup] = useState(false);
@@ -1115,7 +1115,7 @@ export function App() {
 
   function resetBookingForm() {
     bookingIdempotencyKey.current = crypto.randomUUID();
-    setRequesterData({ name: '', rg: '', cpf: '', email: userEmail, whatsapp: '', social: '', date: '', time: '', endTime: '' });
+    setRequesterData({ name: '', cpf: '', email: userEmail, whatsapp: '', social: '', date: '', time: '', endTime: '' });
     setGuestsData([]);
     setAfterHoursMode(false);
     setProgramName('');
@@ -1433,7 +1433,7 @@ export function App() {
   };
 
   const addGuest = () => {
-    setGuestsData((current) => [...current, { name: '', rg: '', cpf: '', email: '', whatsapp: '', social: '' }]);
+    setGuestsData((current) => [...current, { name: '', cpf: '', email: '', whatsapp: '', social: '' }]);
   };
 
   const removeGuest = (index: number) => {
@@ -1918,7 +1918,6 @@ export function App() {
                                       <span><b>Nome</b>{req.requester_name || '-'}</span>
                                       <span><b>WhatsApp</b>{req.requester_whatsapp || '-'}</span>
                                       <span><b>Email</b>{req.requester_email || '-'}</span>
-                                      <span><b>RG</b>{req.requester_rg || '-'}</span>
                                       <span><b>CPF</b>{req.requester_cpf || '-'}</span>
                                       <span><b>Rede social</b>{req.requester_social || '-'}</span>
                                       <span><b>Tipo de horário</b>{req.requested_time && req.requested_time > '17:00' ? 'Excepcional — após as 17h' : 'Horário regular'}</span>
@@ -1936,7 +1935,6 @@ export function App() {
                                             <div className="booking-field-grid">
                                               <span><b>WhatsApp</b>{p.whatsapp || '-'}</span>
                                               <span><b>Email</b>{p.email || '-'}</span>
-                                              <span><b>RG</b>{p.rg || '-'}</span>
                                               <span><b>CPF</b>{p.cpf || '-'}</span>
                                               <span><b>Rede social</b>{p.social || '-'}</span>
                                             </div>
@@ -2771,14 +2769,10 @@ export function App() {
                   <input id="req-whats" required type="text" placeholder="(62) 90000-0000" value={requesterData.whatsapp} onChange={(e) => setRequesterData({ ...requesterData, whatsapp: e.target.value })} />
                 </div>
                 <div className="form-group">
-                  <label htmlFor="req-rg">RG</label>
-                  <input id="req-rg" required type="text" placeholder="0000000" value={requesterData.rg} onChange={(e) => setRequesterData({ ...requesterData, rg: e.target.value })} />
-                </div>
-                <div className="form-group">
                   <label htmlFor="req-cpf">CPF</label>
                   <input id="req-cpf" required type="text" placeholder="000.000.000-00" value={requesterData.cpf} onChange={(e) => setRequesterData({ ...requesterData, cpf: e.target.value })} />
                 </div>
-                <div className="form-group full">
+                <div className="form-group">
                   <label htmlFor="req-social">Redes Sociais (@)</label>
                   <input id="req-social" required type="text" placeholder="@seu_perfil" value={requesterData.social} onChange={(e) => setRequesterData({ ...requesterData, social: e.target.value })} />
                 </div>
@@ -3020,10 +3014,6 @@ export function App() {
                       <input required type="text" placeholder="Nome do convidado" value={guest.name} onChange={(e) => updateGuest(index, 'name', e.target.value)} />
                     </div>
                     <div className="form-group">
-                      <label>RG</label>
-                      <input required type="text" placeholder="0000000" value={guest.rg} onChange={(e) => updateGuest(index, 'rg', e.target.value)} />
-                    </div>
-                    <div className="form-group">
                       <label>CPF</label>
                       <input required type="text" placeholder="000.000.000-00" value={guest.cpf} onChange={(e) => updateGuest(index, 'cpf', e.target.value)} />
                     </div>
@@ -3035,7 +3025,7 @@ export function App() {
                       <label>E-mail</label>
                       <input required type="email" placeholder="convidado@email.com" value={guest.email} onChange={(e) => updateGuest(index, 'email', e.target.value)} />
                     </div>
-                    <div className="form-group full">
+                    <div className="form-group">
                       <label>Redes Sociais (@)</label>
                       <input required type="text" placeholder="@perfil" value={guest.social} onChange={(e) => updateGuest(index, 'social', e.target.value)} />
                     </div>
