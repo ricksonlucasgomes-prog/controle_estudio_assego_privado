@@ -1,5 +1,5 @@
 import { serve } from 'https://deno.land/std@0.192.0/http/server.ts'
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.47.10'
+import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.47.10'
 import { SMTPClient } from 'https://deno.land/x/denomailer@1.6.0/mod.ts'
 
 const ALLOWED_ORIGINS = new Set([
@@ -17,6 +17,7 @@ const ADMIN_RECIPIENTS = [
 
 const MAX_BODY_BYTES = 64 * 1024
 const MAX_GUESTS = 20
+const MAX_MATERIALS = 10
 
 type JsonRecord = Record<string, unknown>
 
@@ -88,6 +89,73 @@ function validatePayload(body: JsonRecord): {
     throw new Error('SLOT_INVALID')
   }
 
+  const program = booking.program
+  const materials = booking.materials ?? []
+  const materialLinks = booking.materialLinks ?? []
+  if (!isRecord(program) || !Array.isArray(materials) || !Array.isArray(materialLinks)) {
+    throw new Error('PROGRAM_INVALID')
+  }
+  const programName = text(program.name, 160)
+  const programFormat = text(program.format, 16)
+  const productionNotes = text(program.productionNotes, 2000)
+  const youtubeChannelUrl = text(program.youtubeChannelUrl, 500)
+  if (programName.length < 2 || !['recorded', 'live'].includes(programFormat)) {
+    throw new Error('PROGRAM_INVALID')
+  }
+  if (programFormat === 'live') {
+    try {
+      const url = new URL(youtubeChannelUrl)
+      if (url.protocol !== 'https:' || !/(^|\.)youtube\.com$/i.test(url.hostname)) {
+        throw new Error('URL_INVALID')
+      }
+    } catch {
+      throw new Error('YOUTUBE_CHANNEL_INVALID')
+    }
+    if (program.youtubeAccessMethod !== 'delegated_permission') {
+      throw new Error('YOUTUBE_ACCESS_INVALID')
+    }
+  }
+  if (materials.length > MAX_MATERIALS || !materials.every(isRecord)) throw new Error('MATERIALS_INVALID')
+  const normalizedMaterials = materials.map((material) => ({
+    path: text(material.path, 500),
+    name: text(material.name, 160),
+    type: text(material.type, 120),
+    size: Number(material.size ?? 0),
+  }))
+  if (normalizedMaterials.some((material) =>
+    !material.path
+    || !material.name
+    || !Number.isFinite(material.size)
+    || material.size < 0
+    || material.size > 50 * 1024 * 1024
+  )) throw new Error('MATERIALS_INVALID')
+  if (normalizedMaterials.reduce((total, material) => total + material.size, 0) > 100 * 1024 * 1024) {
+    throw new Error('MATERIALS_TOTAL_TOO_LARGE')
+  }
+  const normalizedLinks = materialLinks.map((value) => text(value, 1000))
+  if (normalizedLinks.length > 10 || normalizedLinks.some((value) => {
+    try {
+      return new URL(value).protocol !== 'https:'
+    } catch {
+      return true
+    }
+  })) throw new Error('MATERIAL_LINKS_INVALID')
+
+  const normalizedBooking: JsonRecord = {
+    date,
+    time,
+    scheduleType: time > '17:00' ? 'after_hours' : 'regular',
+    program: {
+      name: programName,
+      format: programFormat,
+      productionNotes,
+      youtubeChannelUrl: programFormat === 'live' ? youtubeChannelUrl : '',
+      youtubeAccessMethod: programFormat === 'live' ? 'delegated_permission' : 'not_applicable',
+    },
+    materials: normalizedMaterials,
+    materialLinks: normalizedLinks,
+  }
+
   for (const guest of guests) {
     const requiredGuest = [
       text(guest.name, 160),
@@ -100,7 +168,7 @@ function validatePayload(body: JsonRecord): {
     if (requiredGuest.some((value) => value.length < 2)) throw new Error('GUEST_INVALID')
   }
 
-  return { requester, guests, booking, signature, idempotencyKey }
+  return { requester, guests, booking: normalizedBooking, signature, idempotencyKey }
 }
 
 function clientIp(req: Request): string {
@@ -117,13 +185,40 @@ function safeHeader(value: unknown): string {
   return text(value, 160).replace(/[\r\n]+/g, ' ')
 }
 
-async function sendBookingNotificationEmail(payload: JsonRecord): Promise<void> {
+type MaterialAccessLink = { name: string; type: string; size: number; url: string }
+
+async function createMaterialAccessLinks(admin: SupabaseClient, payload: JsonRecord): Promise<MaterialAccessLink[]> {
+  const booking = isRecord(payload.booking_details) ? payload.booking_details : {}
+  const materials = Array.isArray(booking.materials) ? booking.materials.filter(isRecord) : []
+  const links: MaterialAccessLink[] = []
+  for (const material of materials) {
+    const path = text(material.path, 500)
+    const { data, error } = await admin.storage.from('booking-materials').createSignedUrl(path, 7 * 24 * 60 * 60)
+    if (error || !data?.signedUrl) throw error ?? new Error('MATERIAL_SIGNED_URL_FAILED')
+    links.push({
+      name: text(material.name, 160),
+      type: text(material.type, 120),
+      size: Number(material.size ?? 0),
+      url: data.signedUrl,
+    })
+  }
+  return links
+}
+
+async function sendBookingNotificationEmail(
+  payload: JsonRecord,
+  materialAccessLinks: MaterialAccessLink[],
+): Promise<void> {
   const gmailUser = Deno.env.get('GMAIL_USER')
   const gmailPass = Deno.env.get('GMAIL_APP_PASSWORD')
   if (!gmailUser || !gmailPass) throw new Error('SMTP_NOT_CONFIGURED')
 
   const requester = isRecord(payload.requester) ? payload.requester : {}
   const booking = isRecord(payload.booking_details) ? payload.booking_details : {}
+  const program = isRecord(booking.program) ? booking.program : {}
+  const externalLinks = Array.isArray(booking.materialLinks)
+    ? booking.materialLinks.map((value) => text(value, 1000)).filter(Boolean)
+    : []
   const guests = Array.isArray(payload.guests) ? payload.guests.filter(isRecord) : []
   const guestsList = guests.length
     ? guests.map((guest, index) =>
@@ -135,6 +230,14 @@ async function sendBookingNotificationEmail(payload: JsonRecord): Promise<void> 
         `   Rede social: ${text(guest.social, 120) || '-'}`
       ).join('\n\n')
     : 'Nenhum convidado adicional.'
+  const storedMaterialsList = materialAccessLinks.length
+    ? materialAccessLinks.map((material, index) =>
+        `${index + 1}. ${material.name || 'Material'} (${material.type || 'arquivo'}, ${Math.round(material.size / 1024)} KB)\n   ${material.url}`
+      ).join('\n\n')
+    : 'Nenhum arquivo enviado pelo formulario.'
+  const externalMaterialsList = externalLinks.length
+    ? externalLinks.map((url, index) => `${index + 1}. ${url}`).join('\n')
+    : 'Nenhum link externo informado.'
 
   const client = new SMTPClient({
     connection: {
@@ -162,6 +265,14 @@ async function sendBookingNotificationEmail(payload: JsonRecord): Promise<void> 
         `Data: ${text(booking.date, 10)}\n` +
         `Horario: ${text(booking.time, 5)}\n` +
         `Tipo: ${text(booking.time, 5) > '17:00' ? 'Solicitacao excepcional apos as 17h' : 'Horario regular'}\n\n` +
+        `===== Programa =====\n` +
+        `Nome: ${text(program.name, 160) || '-'}\n` +
+        `Formato: ${program.format === 'live' ? 'Ao vivo' : 'Gravado'}\n` +
+        `Orientacoes: ${text(program.productionNotes, 2000) || 'Nenhuma orientacao adicional.'}\n` +
+        `Canal do YouTube: ${text(program.youtubeChannelUrl, 500) || 'Nao se aplica'}\n` +
+        `Acesso ao canal: ${program.format === 'live' ? 'Permissao delegada pelo YouTube Studio; nenhuma senha coletada.' : 'Nao se aplica'}\n\n` +
+        `===== Arquivos privados (links validos por 7 dias) =====\n${storedMaterialsList}\n\n` +
+        `===== Links de materiais externos =====\n${externalMaterialsList}\n\n` +
         `===== Convidados (${guests.length}) =====\n${guestsList}\n\n` +
         `Assinatura digital registrada para ${text(payload.signer_name, 160)}.\n` +
         `Acesse o app para aprovar ou rejeitar: https://assegostudio.vercel.app`,
@@ -213,7 +324,32 @@ serve(async (req) => {
     const { data: { user }, error: userError } = await authClient.auth.getUser()
     if (userError || !user?.email) return jsonResponse(req, { error: 'Nao autenticado.' }, 401)
 
+    const submittedMaterials = Array.isArray(input.booking.materials)
+      ? input.booking.materials.filter(isRecord)
+      : []
+    const expectedPrefix = `${user.id}/${input.idempotencyKey}/`
+    if (submittedMaterials.some((material) => {
+      const path = text(material.path, 500)
+      const fileName = path.slice(expectedPrefix.length)
+      return !path.startsWith(expectedPrefix)
+        || fileName.includes('/')
+        || !/^\d{2}-[a-f0-9]{24}-/i.test(fileName)
+    })) {
+      return jsonResponse(req, { error: 'Material de agendamento invalido.' }, 400)
+    }
+
     const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } })
+    if (submittedMaterials.length > 0) {
+      const folder = expectedPrefix.slice(0, -1)
+      const { data: storedObjects, error: storageError } = await admin.storage
+        .from('booking-materials')
+        .list(folder, { limit: 100 })
+      if (storageError) throw storageError
+      const storedNames = new Set((storedObjects ?? []).map((item) => item.name))
+      if (submittedMaterials.some((material) => !storedNames.has(text(material.path, 500).slice(expectedPrefix.length)))) {
+        return jsonResponse(req, { error: 'Um ou mais materiais enviados nao foram encontrados.' }, 400)
+      }
+    }
     const { data: allowed, error: rateError } = await admin.rpc('consume_rate_limit_v1', {
       p_actor_id: user.id,
       p_action: 'submit_booking',
@@ -271,7 +407,9 @@ serve(async (req) => {
       .eq('id', outboxId)
 
     try {
-      await sendBookingNotificationEmail(outbox.payload as JsonRecord)
+      const outboxPayload = outbox.payload as JsonRecord
+      const materialAccessLinks = await createMaterialAccessLinks(admin, outboxPayload)
+      await sendBookingNotificationEmail(outboxPayload, materialAccessLinks)
       await admin
         .from('notification_outbox')
         .update({

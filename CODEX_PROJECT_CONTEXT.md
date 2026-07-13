@@ -1,5 +1,14 @@
 # CODEX_PROJECT_CONTEXT
 
+## Atualizacao - materiais do programa e transmissao
+
+- O formulario de agendamento coleta nome do programa, formato gravado/ao vivo, orientacoes de producao, arquivos e links externos.
+- Materiais enviados pelo botao usam o bucket privado booking-materials, limitado por RLS ao proprio usuario e a equipe autorizada. O email recebe links assinados temporarios; videos maiores devem ser informados por link HTTPS.
+- O app nunca solicita nem envia login, senha ou codigo de verificacao do YouTube. Para programas ao vivo, coleta o link do canal e exige acesso delegado pelas permissoes do YouTube Studio.
+- A ativacao em producao depende de aplicar security_hardening_phase1.sql e publicar a versao correspondente da Edge Function submit-booking antes do frontend.
+
+---
+
 ## Atualizacao - 2026-07-13
 
 - O formulario de acesso e gravacao informa que os dados pessoais sao solicitados pela Presidencia da ASSEGO.

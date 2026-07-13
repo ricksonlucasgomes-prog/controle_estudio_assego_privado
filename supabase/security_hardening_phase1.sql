@@ -11,6 +11,51 @@ create extension if not exists "pgcrypto";
 
 begin;
 
+-- Materiais enviados pelo solicitante ficam privados. O primeiro diretorio
+-- do objeto e sempre o UUID do proprio usuario autenticado.
+insert into storage.buckets (
+  id,
+  name,
+  public,
+  file_size_limit,
+  allowed_mime_types
+) values (
+  'booking-materials',
+  'booking-materials',
+  false,
+  52428800,
+  array['image/*', 'video/*', 'application/pdf']
+)
+on conflict (id) do update set
+  public = excluded.public,
+  file_size_limit = excluded.file_size_limit,
+  allowed_mime_types = excluded.allowed_mime_types;
+
+drop policy if exists "booking_materials_insert_own" on storage.objects;
+drop policy if exists "booking_materials_select_own_or_staff" on storage.objects;
+drop policy if exists "booking_materials_update_own" on storage.objects;
+drop policy if exists "booking_materials_delete_own" on storage.objects;
+
+create policy "booking_materials_insert_own" on storage.objects
+for insert to authenticated
+with check (
+  bucket_id = 'booking-materials'
+  and (storage.foldername(name))[1] = auth.uid()::text
+);
+
+create policy "booking_materials_select_own_or_staff" on storage.objects
+for select to authenticated
+using (
+  bucket_id = 'booking-materials'
+  and (
+    (storage.foldername(name))[1] = auth.uid()::text
+    or public.current_user_role() in ('admin', 'developer')
+  )
+);
+
+-- Nao conceder UPDATE ou DELETE ao solicitante: depois do upload, o material
+-- referenciado na assinatura e no email precisa permanecer imutavel.
+
 -- Identidade imutavel do aprovador principal. Nenhuma policy cliente.
 create table if not exists public.lead_approvers (
   user_id uuid primary key references auth.users(id) on delete restrict,
@@ -364,7 +409,10 @@ begin
     'booking_details', jsonb_build_object(
       'date', v_requested_date,
       'time', v_requested_time,
-      'scheduleType', case when v_requested_time > '17:00' then 'after_hours' else 'regular' end
+      'scheduleType', case when v_requested_time > '17:00' then 'after_hours' else 'regular' end,
+      'program', coalesce(p_booking->'program', '{}'::jsonb),
+      'materials', coalesce(p_booking->'materials', '[]'::jsonb),
+      'materialLinks', coalesce(p_booking->'materialLinks', '[]'::jsonb)
     ),
     'document_name', 'Termo_de_Uso_Assego.pdf',
     'signer_name', v_signer_name,

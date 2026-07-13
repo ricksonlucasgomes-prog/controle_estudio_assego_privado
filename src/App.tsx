@@ -1,5 +1,5 @@
 import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from 'react';
-import { Bell, ClipboardCheck, PackageCheck, Video, CalendarDays, Camera, LogOut, ChevronRight, ChevronUp, ChevronDown, Clock3, Radio, ShieldCheck, Package, ArrowRight, Activity, ScanFace, Download, Mail, MessageCircle, X, type LucideIcon } from 'lucide-react';
+import { Bell, ClipboardCheck, PackageCheck, Video, CalendarDays, Camera, LogOut, ChevronRight, ChevronUp, ChevronDown, Clock3, Radio, ShieldCheck, Package, ArrowRight, Activity, ScanFace, Download, Upload, Link2, FileText, Mail, MessageCircle, X, type LucideIcon } from 'lucide-react';
 import { edgeFunctionUrl, supabase, supabaseConfigured, type Profile, type UserRole } from './supabase';
 import { TermsScrollPopup } from './TermsScrollPopup';
 import { BOOKING_TERMS, EQUIPMENT_TERMS } from './termsContent';
@@ -100,6 +100,17 @@ const BOOKING_APPROVERS = ['Lucas Rickson', 'Badu', 'Sergio Vinicius', 'Sgt. Tia
 const PODCAST_NOTICE = 'App ainda em desenvolvimento - dev: Lucas Rickson - Novas atualizações em breve';
 const UPLOAD_ENDPOINT = import.meta.env.VITE_UPLOAD_ENDPOINT as string | undefined;
 const ACCESS_REQUEST_ENDPOINT = import.meta.env.VITE_ACCESS_REQUEST_ENDPOINT as string | undefined;
+const BOOKING_MATERIALS_BUCKET = 'booking-materials';
+const MAX_BOOKING_MATERIALS = 10;
+const MAX_BOOKING_MATERIAL_BYTES = 50 * 1024 * 1024;
+const MAX_BOOKING_MATERIALS_TOTAL_BYTES = 100 * 1024 * 1024;
+
+type BookingMaterialUpload = {
+  path: string;
+  name: string;
+  type: string;
+  size: number;
+};
 
 const ROLE_LABEL: Record<UserRole, string> = {
   admin: 'admin',
@@ -133,6 +144,27 @@ function formatDateInputValue(date: Date): string {
     String(date.getMonth() + 1).padStart(2, '0'),
     String(date.getDate()).padStart(2, '0'),
   ].join('-');
+}
+
+function safeStorageFileName(name: string): string {
+  const normalized = name.normalize('NFKD').replace(/[^\w.\-]+/g, '-').replace(/-+/g, '-');
+  return normalized.replace(/^[-.]+|[-.]+$/g, '').slice(0, 120) || 'material';
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+}
+
+async function fileSha256(file: File): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', await file.arrayBuffer());
+  return Array.from(new Uint8Array(digest))
+    .map((value) => value.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+function parseMaterialLinks(value: string): string[] {
+  return value.split(/\r?\n/).map((item) => item.trim()).filter(Boolean);
 }
 
 // 2. Adicionada a aba de Agenda no Menu
@@ -345,6 +377,13 @@ export function App() {
   const [signatureName, setSignatureName] = useState('');
   const [bookingBusy, setBookingBusy] = useState(false);
   const bookingIdempotencyKey = useRef(crypto.randomUUID());
+  const [programName, setProgramName] = useState('');
+  const [programFormat, setProgramFormat] = useState<'recorded' | 'live'>('recorded');
+  const [productionNotes, setProductionNotes] = useState('');
+  const [youtubeChannelUrl, setYoutubeChannelUrl] = useState('');
+  const [youtubePermissionAcknowledged, setYoutubePermissionAcknowledged] = useState(false);
+  const [bookingMaterialFiles, setBookingMaterialFiles] = useState<File[]>([]);
+  const [bookingMaterialLinks, setBookingMaterialLinks] = useState('');
 
   // Popup de disponibilidade (agenda real do estúdio via studio-availability).
   const [showAvailability, setShowAvailability] = useState(false);
@@ -1052,6 +1091,13 @@ export function App() {
     setRequesterData({ name: '', rg: '', cpf: '', email: userEmail, whatsapp: '', social: '', date: '', time: '' });
     setGuestsData([]);
     setAfterHoursMode(false);
+    setProgramName('');
+    setProgramFormat('recorded');
+    setProductionNotes('');
+    setYoutubeChannelUrl('');
+    setYoutubePermissionAcknowledged(false);
+    setBookingMaterialFiles([]);
+    setBookingMaterialLinks('');
     setShowTermPopup(false);
     setTermAccepted(false);
     setSignatureName('');
@@ -1122,6 +1168,65 @@ export function App() {
     setRequesterData((current) => ({ ...current, date: '', time: '' }));
   }
 
+  function selectBookingMaterials(event: ChangeEvent<HTMLInputElement>) {
+    const incoming = Array.from(event.target.files ?? []);
+    event.target.value = '';
+    if (!incoming.length) return;
+
+    const next = [...bookingMaterialFiles, ...incoming];
+    if (next.length > MAX_BOOKING_MATERIALS) {
+      alert(`Envie no máximo ${MAX_BOOKING_MATERIALS} arquivos por solicitação.`);
+      return;
+    }
+
+    const invalidType = next.find((file) =>
+      !file.type.startsWith('image/')
+      && !file.type.startsWith('video/')
+      && file.type !== 'application/pdf',
+    );
+    if (invalidType) {
+      alert(`O arquivo "${invalidType.name}" não é uma imagem, vídeo ou PDF permitido.`);
+      return;
+    }
+
+    const oversized = next.find((file) => file.size > MAX_BOOKING_MATERIAL_BYTES);
+    if (oversized) {
+      alert(`O arquivo "${oversized.name}" excede 50 MB. Para arquivos maiores, use o campo de links.`);
+      return;
+    }
+
+    const totalBytes = next.reduce((sum, file) => sum + file.size, 0);
+    if (totalBytes > MAX_BOOKING_MATERIALS_TOTAL_BYTES) {
+      alert('O conjunto de arquivos excede 100 MB. Envie os arquivos maiores por link.');
+      return;
+    }
+
+    setBookingMaterialFiles(next);
+  }
+
+  async function uploadBookingMaterials(): Promise<BookingMaterialUpload[]> {
+    if (!supabase || bookingMaterialFiles.length === 0) return [];
+
+    const uploads: BookingMaterialUpload[] = [];
+    for (let index = 0; index < bookingMaterialFiles.length; index += 1) {
+      const file = bookingMaterialFiles[index];
+      const fingerprint = await fileSha256(file);
+      const path = [
+        userId,
+        bookingIdempotencyKey.current,
+        `${String(index + 1).padStart(2, '0')}-${fingerprint.slice(0, 24)}-${safeStorageFileName(file.name)}`,
+      ].join('/');
+      const { error } = await supabase.storage
+        .from(BOOKING_MATERIALS_BUCKET)
+        .upload(path, file, { contentType: file.type || 'application/octet-stream', upsert: false });
+      if (error && !/already exists|duplicate|resource exists/i.test(error.message)) {
+        throw new Error(`Não foi possível enviar "${file.name}": ${error.message}`);
+      }
+      uploads.push({ path, name: file.name.slice(0, 160), type: file.type, size: file.size });
+    }
+    return uploads;
+  }
+
   const handleBookingSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (bookingBusy) return;
@@ -1148,7 +1253,44 @@ export function App() {
       return;
     }
 
+    if (programName.trim().length < 2) {
+      alert('Informe o nome do programa ou podcast.');
+      return;
+    }
+
+    const externalMaterialLinks = parseMaterialLinks(bookingMaterialLinks);
+    if (externalMaterialLinks.length > 10) {
+      alert('Informe no máximo 10 links de materiais.');
+      return;
+    }
+    if (externalMaterialLinks.some((item) => {
+      try {
+        const url = new URL(item);
+        return url.protocol !== 'https:';
+      } catch {
+        return true;
+      }
+    })) {
+      alert('Use links completos e seguros, começando com https://.');
+      return;
+    }
+
+    if (programFormat === 'live') {
+      try {
+        const channel = new URL(youtubeChannelUrl);
+        if (channel.protocol !== 'https:' || !/(^|\.)youtube\.com$/i.test(channel.hostname)) throw new Error();
+      } catch {
+        alert('Informe um link completo do canal em youtube.com.');
+        return;
+      }
+      if (!youtubePermissionAcknowledged) {
+        alert('Confirme que o acesso ao canal será concedido por permissão do YouTube Studio, sem compartilhar senha.');
+        return;
+      }
+    }
+
     setBookingBusy(true);
+    let uploadedMaterials: BookingMaterialUpload[] = [];
     try {
       if (!supabase) throw new Error('Banco de dados não configurado.');
 
@@ -1157,6 +1299,8 @@ export function App() {
         alert('Sua sessão expirou. Você precisa fazer login novamente.');
         return;
       }
+
+      uploadedMaterials = await uploadBookingMaterials();
 
       // Metadados da assinatura digital (não-repúdio). O hash SHA-256 + IP
       // (x-forwarded-for) são carimbados no backend pela Edge Function.
@@ -1193,6 +1337,15 @@ export function App() {
               date: requesterData.date,
               time: requesterData.time,
               scheduleType: afterHoursMode ? 'after_hours' : 'regular',
+              program: {
+                name: programName.trim(),
+                format: programFormat,
+                productionNotes: productionNotes.trim(),
+                youtubeChannelUrl: programFormat === 'live' ? youtubeChannelUrl.trim() : '',
+                youtubeAccessMethod: programFormat === 'live' ? 'delegated_permission' : 'not_applicable',
+              },
+              materials: uploadedMaterials,
+              materialLinks: externalMaterialLinks,
             },
             signature,
             approvers: BOOKING_APPROVERS,
@@ -2521,6 +2674,151 @@ export function App() {
                       </div>
                     )}
                   </div>
+                </div>
+                <div className="form-group full">
+                  <section className="program-brief" aria-labelledby="program-brief-title">
+                    <div className="program-brief__head">
+                      <span aria-hidden="true"><FileText size={20} /></span>
+                      <div>
+                        <h4 id="program-brief-title">Informações e materiais do programa</h4>
+                        <p>Envie à equipe tudo que deverá ser preparado ou exibido durante a gravação.</p>
+                      </div>
+                    </div>
+
+                    <div className="program-brief__field">
+                      <label htmlFor="program-name">Nome do programa ou podcast</label>
+                      <input
+                        id="program-name"
+                        required
+                        type="text"
+                        maxLength={160}
+                        placeholder="Ex.: Podcast Segurança em Pauta"
+                        value={programName}
+                        onChange={(event) => setProgramName(event.target.value)}
+                      />
+                    </div>
+
+                    <fieldset className="program-format">
+                      <legend>Formato do programa</legend>
+                      <div className="program-format__options">
+                        <button
+                          type="button"
+                          className={programFormat === 'recorded' ? 'is-selected' : ''}
+                          aria-pressed={programFormat === 'recorded'}
+                          onClick={() => {
+                            setProgramFormat('recorded');
+                            setYoutubeChannelUrl('');
+                            setYoutubePermissionAcknowledged(false);
+                          }}
+                        >
+                          <Video size={18} aria-hidden="true" />
+                          <span><strong>Gravado</strong><small>Produção para edição e publicação posterior</small></span>
+                        </button>
+                        <button
+                          type="button"
+                          className={programFormat === 'live' ? 'is-selected' : ''}
+                          aria-pressed={programFormat === 'live'}
+                          onClick={() => setProgramFormat('live')}
+                        >
+                          <Radio size={18} aria-hidden="true" />
+                          <span><strong>Ao vivo</strong><small>Transmissão pelo canal do solicitante</small></span>
+                        </button>
+                      </div>
+                    </fieldset>
+
+                    {programFormat === 'live' && (
+                      <div className="youtube-access-panel">
+                        <div className="program-brief__field">
+                          <label htmlFor="youtube-channel-url">Link do canal do YouTube</label>
+                          <input
+                            id="youtube-channel-url"
+                            required
+                            type="url"
+                            placeholder="https://www.youtube.com/@seu-canal"
+                            value={youtubeChannelUrl}
+                            onChange={(event) => setYoutubeChannelUrl(event.target.value)}
+                          />
+                        </div>
+                        <div className="credential-safety-notice">
+                          <ShieldCheck size={18} aria-hidden="true" />
+                          <div>
+                            <strong>Nunca informe login, senha ou código de verificação.</strong>
+                            <span>O acesso do operador será feito por convite e permissão no YouTube Studio. A equipe entrará em contato para orientar a liberação.</span>
+                          </div>
+                        </div>
+                        <label className="youtube-permission-check">
+                          <input
+                            type="checkbox"
+                            checked={youtubePermissionAcknowledged}
+                            onChange={(event) => setYoutubePermissionAcknowledged(event.target.checked)}
+                          />
+                          <span>Estou ciente de que o acesso será concedido por permissão, sem compartilhamento de senha.</span>
+                        </label>
+                      </div>
+                    )}
+
+                    <div className="program-brief__field">
+                      <label htmlFor="production-notes">Orientações para a produção</label>
+                      <textarea
+                        id="production-notes"
+                        maxLength={2000}
+                        rows={4}
+                        placeholder="Informe nomes, ordem do programa, textos, identidade visual, momentos de exibição e outras orientações."
+                        value={productionNotes}
+                        onChange={(event) => setProductionNotes(event.target.value)}
+                      />
+                      <small className="program-brief__counter">{productionNotes.length}/2000</small>
+                    </div>
+
+                    <div className="booking-materials">
+                      <div className="booking-materials__head">
+                        <div>
+                          <strong>Artes, imagens, vídeos e PDF</strong>
+                          <span>Até 10 arquivos, 50 MB por arquivo e 100 MB no total.</span>
+                        </div>
+                        <label className="booking-materials__upload">
+                          <Upload size={17} aria-hidden="true" />
+                          <span>Selecionar arquivos</span>
+                          <input
+                            type="file"
+                            multiple
+                            accept="image/*,video/*,application/pdf"
+                            onChange={selectBookingMaterials}
+                          />
+                        </label>
+                      </div>
+                      {bookingMaterialFiles.length > 0 && (
+                        <ul className="booking-materials__list">
+                          {bookingMaterialFiles.map((file, index) => (
+                            <li key={`${file.name}-${file.size}-${index}`}>
+                              <span><FileText size={15} aria-hidden="true" /><span><strong>{file.name}</strong><small>{formatFileSize(file.size)}</small></span></span>
+                              <button
+                                type="button"
+                                aria-label={`Remover ${file.name}`}
+                                onClick={() => setBookingMaterialFiles((current) => current.filter((_, itemIndex) => itemIndex !== index))}
+                              >
+                                <X size={15} aria-hidden="true" />
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+
+                    <div className="program-brief__field">
+                      <label htmlFor="booking-material-links"><Link2 size={14} aria-hidden="true" /> Links para arquivos maiores</label>
+                      <textarea
+                        id="booking-material-links"
+                        rows={3}
+                        placeholder={"Cole um link HTTPS por linha, como Google Drive, OneDrive ou WeTransfer."}
+                        value={bookingMaterialLinks}
+                        onChange={(event) => setBookingMaterialLinks(event.target.value)}
+                      />
+                    </div>
+                    <p className="booking-materials__privacy">
+                      Os arquivos enviados pelo botão ficam em armazenamento privado. O email de solicitação recebe links temporários para acesso.
+                    </p>
+                  </section>
                 </div>
               </div>
 
