@@ -2821,6 +2821,8 @@ export function App() {
                               min={afterHoursMinDate}
                               max={afterHoursMaxDate}
                               value={requesterData.date}
+                              title="Clique para abrir o calendário"
+                              onClick={(event) => event.currentTarget.showPicker?.()}
                               onChange={(event) => setRequesterData({ ...requesterData, date: event.target.value })}
                             />
                           </div>

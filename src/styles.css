@@ -3717,6 +3717,10 @@ body::before {
   gap: 12px;
 }
 
+#after-hours-date {
+  cursor: pointer;
+}
+
 .booking-badge--after-hours {
   color: var(--accent-bright);
   background: rgba(var(--accent-bright-rgb), .12);
