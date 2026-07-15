@@ -342,7 +342,7 @@ export async function listBookingRequests(): Promise<BookingRequest[]> {
 export async function updateBookingStatus(
   id: string,
   status: Extract<BookingStatus, 'approved' | 'rejected'>,
-): Promise<{ notificationStatus: string }> {
+): Promise<{ notificationStatus: string; calendarStatus: string }> {
   if (!supabase) throw new Error('Banco de dados não configurado.');
   const { data: sessionData } = await supabase.auth.getSession();
   const token = sessionData.session?.access_token;
@@ -358,7 +358,10 @@ export async function updateBookingStatus(
   });
   const result = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(result.error || 'Não foi possível registrar a decisão.');
-  return { notificationStatus: result.notification_status ?? 'unknown' };
+  return {
+    notificationStatus: result.notification_status ?? 'unknown',
+    calendarStatus: result.calendar_status ?? 'skipped',
+  };
 }
 
 export async function listAppNotifications(): Promise<AppNotification[]> {

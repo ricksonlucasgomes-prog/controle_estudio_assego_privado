@@ -1534,10 +1534,13 @@ export function App() {
         flash('Decisão salva e aviso no app criado; e-mail aguardando nova tentativa');
       } else if (result.notificationStatus === 'processing') {
         flash('Decisão salva; envio do e-mail já está em processamento');
+      } else if (status === 'approved') {
+        const inCalendar = result.calendarStatus === 'created' || result.calendarStatus === 'already_exists';
+        flash(inCalendar
+          ? 'Solicitação aprovada; solicitante avisado e evento criado no Google Calendar'
+          : 'Solicitação aprovada; solicitante avisado');
       } else {
-        flash(status === 'approved'
-          ? 'Solicitação aprovada; solicitante avisado'
-          : 'Solicitação rejeitada; solicitante avisado');
+        flash('Solicitação rejeitada; solicitante avisado');
       }
     } catch (error: any) {
       flash(error?.message || 'Falha ao atualizar solicitação');

@@ -1,5 +1,5 @@
 import { serve } from 'https://deno.land/std@0.192.0/http/server.ts'
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.47.10'
+import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.47.10'
 import { SMTPClient } from 'https://deno.land/x/denomailer@1.6.0/mod.ts'
 
 const ALLOWED_ORIGINS = new Set([
@@ -76,6 +76,104 @@ async function sendDecisionEmail(payload: JsonRecord): Promise<void> {
   }
 }
 
+// ---------------------------------------------------------------------
+// Google Calendar: ao aprovar, cria automaticamente o evento no calendario
+// do administrador. Requer secrets (OAuth com escopo de Calendar):
+//   supabase secrets set GOOGLE_CALENDAR_REFRESH_TOKEN=... \
+//     [GOOGLE_CALENDAR_CLIENT_ID=... GOOGLE_CALENDAR_CLIENT_SECRET=...] \
+//     [GOOGLE_CALENDAR_ID=primary]
+// Se GOOGLE_CALENDAR_CLIENT_ID/SECRET nao forem definidos, reutiliza
+// GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET (mesmo OAuth client do Drive).
+// Sem refresh token configurado, a aprovacao continua normal (skip do evento).
+// ---------------------------------------------------------------------
+const CALENDAR_TZ = 'America/Sao_Paulo'
+
+function addOneHour(hhmm: string): string {
+  const match = /^(\d{2}):(\d{2})$/.exec(hhmm)
+  if (!match) return hhmm
+  const total = (Number(match[1]) * 60 + Number(match[2]) + 60) % (24 * 60)
+  return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`
+}
+
+async function googleCalendarAccessToken(): Promise<string> {
+  const clientId = Deno.env.get('GOOGLE_CALENDAR_CLIENT_ID') ?? Deno.env.get('GOOGLE_CLIENT_ID') ?? ''
+  const clientSecret = Deno.env.get('GOOGLE_CALENDAR_CLIENT_SECRET') ?? Deno.env.get('GOOGLE_CLIENT_SECRET') ?? ''
+  const refreshToken = Deno.env.get('GOOGLE_CALENDAR_REFRESH_TOKEN') ?? ''
+  if (!clientId || !clientSecret || !refreshToken) return ''
+  const body = new URLSearchParams({
+    client_id: clientId,
+    client_secret: clientSecret,
+    refresh_token: refreshToken,
+    grant_type: 'refresh_token',
+  })
+  const res = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', body })
+  if (!res.ok) throw new Error('CALENDAR_TOKEN_REFRESH_FAILED: ' + (await res.text()).slice(0, 200))
+  return String((await res.json()).access_token ?? '')
+}
+
+// Cria o evento de forma idempotente: o id do evento e o UUID da reserva sem
+// hifens (base32hex valido). Reaprovar/reenviar nao duplica (409 = ja existe).
+async function createBookingCalendarEvent(admin: SupabaseClient, bookingId: string): Promise<string> {
+  const accessToken = await googleCalendarAccessToken()
+  if (!accessToken) return 'not_configured'
+
+  const { data: booking, error } = await admin
+    .from('studio_booking_requests')
+    .select('requester_name, requester_email, requester_whatsapp, requester_social, requested_date, requested_time, requested_end_time')
+    .eq('id', bookingId)
+    .single()
+  if (error || !booking) throw new Error('BOOKING_NOT_FOUND')
+
+  const date = text(booking.requested_date, 10)
+  const startTime = text(booking.requested_time, 5)
+  const endTime = text(booking.requested_end_time, 5) || addOneHour(startTime)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}$/.test(startTime) || !/^\d{2}:\d{2}$/.test(endTime)) {
+    throw new Error('BOOKING_DATETIME_INVALID')
+  }
+
+  const { data: parts } = await admin
+    .from('studio_booking_participants')
+    .select('full_name, email, whatsapp')
+    .eq('booking_request_id', bookingId)
+  const guests = (parts ?? []) as Array<{ full_name: string; email: string | null; whatsapp: string | null }>
+
+  const description = [
+    `Solicitante: ${text(booking.requester_name, 160)}`,
+    `E-mail: ${text(booking.requester_email, 254) || '-'}`,
+    `WhatsApp: ${text(booking.requester_whatsapp, 30) || '-'}`,
+    `Rede social: ${text(booking.requester_social, 120) || '-'}`,
+    '',
+    `Participantes (${guests.length}):`,
+    ...(guests.length
+      ? guests.map((g, i) => `${i + 1}. ${text(g.full_name, 160)} — ${text(g.email, 254) || 'sem e-mail'} — ${text(g.whatsapp, 30) || 'sem WhatsApp'}`)
+      : ['Nenhum convidado adicional.']),
+    '',
+    'Reserva aprovada pelo Assego Studio.',
+  ].join('\n')
+
+  const event = {
+    id: bookingId.replace(/-/g, ''),
+    summary: `Gravação no estúdio — ${text(booking.requester_name, 160)}`,
+    location: 'Assego Studio — ASSEGO PM & BM',
+    description,
+    start: { dateTime: `${date}T${startTime}:00`, timeZone: CALENDAR_TZ },
+    end: { dateTime: `${date}T${endTime}:00`, timeZone: CALENDAR_TZ },
+  }
+
+  const calendarId = Deno.env.get('GOOGLE_CALENDAR_ID') || 'primary'
+  const res = await fetch(
+    `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?sendUpdates=none`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(event),
+    },
+  )
+  if (res.status === 409) return 'already_exists'
+  if (!res.ok) throw new Error('CALENDAR_INSERT_FAILED: ' + res.status + ' ' + (await res.text()).slice(0, 200))
+  return 'created'
+}
+
 serve(async (req) => {
   const origin = req.headers.get('origin') ?? ''
   if (origin && !ALLOWED_ORIGINS.has(origin)) {
@@ -137,6 +235,19 @@ serve(async (req) => {
     const outboxId = text(decision?.outbox_id, 64)
     if (!outboxId) throw new Error('OUTBOX_RESULT_INVALID')
     const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } })
+
+    // Na aprovacao, cria o evento no Google Calendar do administrador.
+    // Nao-fatal: se falhar ou nao estiver configurado, a aprovacao segue normal.
+    let calendarStatus = 'skipped'
+    if (status === 'approved') {
+      try {
+        calendarStatus = await createBookingCalendarEvent(admin, bookingId)
+      } catch (calendarError) {
+        calendarStatus = 'error'
+        console.error(`[${requestId}] Falha ao criar evento no Google Calendar`, calendarError instanceof Error ? calendarError.message : calendarError)
+      }
+    }
+
     const { data: outbox, error: outboxError } = await admin
       .from('notification_outbox')
       .select('id, payload, status, attempts')
@@ -149,6 +260,7 @@ serve(async (req) => {
         success: true,
         booking_id: bookingId,
         status,
+        calendar_status: calendarStatus,
         notification_status: 'already_sent',
       }, 200)
     }
@@ -165,6 +277,7 @@ serve(async (req) => {
         success: true,
         booking_id: bookingId,
         status,
+        calendar_status: calendarStatus,
         notification_status: 'processing',
       }, 202)
     }
@@ -185,6 +298,7 @@ serve(async (req) => {
         success: true,
         booking_id: bookingId,
         status,
+        calendar_status: calendarStatus,
         notification_status: 'sent',
       }, 200)
     } catch (emailError) {
@@ -204,6 +318,7 @@ serve(async (req) => {
         success: true,
         booking_id: bookingId,
         status,
+        calendar_status: calendarStatus,
         notification_status: 'pending_retry',
         warning: 'Decisão registrada e aviso no app criado. O e-mail aguarda nova tentativa.',
       }, 202)
