@@ -4239,7 +4239,33 @@ body::before {
 }
 
 .availability-period select {
+  width: 100%;
   min-height: 42px;
+  padding: 10px 34px 10px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--line);
+  background-color: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23aeb8c9' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 12px;
+  transition: border-color .16s ease, box-shadow .16s ease, background-color .16s ease;
+}
+
+.availability-period select:focus {
+  outline: none;
+  border-color: var(--accent-bright);
+  box-shadow: 0 0 0 3px rgba(var(--accent-bright-rgb), .18);
+  background-color: var(--panel-2);
+}
+
+.availability-period select option {
+  background: var(--panel-2);
+  color: var(--text);
 }
 
 @media (max-width: 560px) {
