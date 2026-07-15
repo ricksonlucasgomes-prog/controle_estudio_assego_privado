@@ -1,5 +1,5 @@
 // Service worker minimo: habilita instalacao (PWA) e um cache basico do app shell.
-const CACHE = 'assego-estudio-v3';
+const CACHE = 'assego-estudio-v4';
 const SHELL = ['/', '/index.html', '/logo.png', '/manifest.webmanifest', '/icon-192.png', '/icon-512.png'];
 
 self.addEventListener('install', (event) => {
