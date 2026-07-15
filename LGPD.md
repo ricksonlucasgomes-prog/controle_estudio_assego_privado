@@ -14,6 +14,7 @@ pedidos dos titulares. Complementa o Termo de Uso exibido no app
 | Pedido de equipamento | Nome, e-mail, justificativa | `studio_equipment_requests` |
 | Retirada de equipamento | Nome, e-mail, foto | `studio_checkouts`, `studio_checkout_history` |
 | Notificações | Nome/e-mail no corpo; payloads de fila com PII | `app_notifications`, `notification_outbox` |
+| Aprovação de reserva | Nome/e-mail/WhatsApp do solicitante e participantes na descrição do evento | Google Calendar do administrador (operador: Google) |
 
 > **RG e CPF não são coletados** pelo app (princípio da minimização — LGPD
 > art. 6º, III). O controle de acesso ao estúdio usa nome + contato +

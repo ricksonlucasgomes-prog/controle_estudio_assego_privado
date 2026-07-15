@@ -177,7 +177,10 @@ Abas principais (`MAIN_TABS`): **Agenda**, **Ao Vivo**, **Conferência**, **Equi
 ### 5.2 Decisão do agendamento
 O lead approver aprova/rejeita → `decide-booking` (RPC `set_booking_status_v1`)
 muda o status, cria `app_notification` para o solicitante e envia e-mail de
-decisão. Idempotente.
+decisão. Idempotente. **Ao aprovar**, cria automaticamente o evento no
+**Google Calendar** do administrador (id do evento = UUID da reserva sem
+hifens → sem duplicar; não-fatal se não configurado). Ver secrets
+`GOOGLE_CALENDAR_*` na seção 11.
 
 ### 5.3 Equipamento
 - **Conferência**: checklist dos equipamentos; se houver pendência, exige
@@ -254,7 +257,7 @@ origens; autenticação por **Bearer JWT** (exceto as de cron, por `x-cron-secre
 | Função | O que faz | Auth |
 |---|---|---|
 | `submit-booking` | Valida payload, verifica materiais no Storage, rate limit, chama `create_signed_booking_v1`, envia e-mail (via outbox). | JWT |
-| `decide-booking` | Aprova/rejeita via `set_booking_status_v1`, envia e-mail de decisão. | JWT (lead approver na RPC) |
+| `decide-booking` | Aprova/rejeita via `set_booking_status_v1`, envia e-mail de decisão e, na aprovação, cria o evento no Google Calendar. | JWT (lead approver na RPC) |
 | `request-equipment` | Cria pedido via `create_equipment_request_v1`, notifica admins. | JWT |
 | `request-access` | E-mail aos admins pedindo liberação de perfil. | JWT |
 | `studio-availability` | Lê ICS do calendário e devolve horários livres. | JWT |
@@ -324,6 +327,15 @@ do titular). Resumo:
 `NOTIFICATION_WORKER_SECRET`, `CRON_SECRET`, `STUDIO_CALENDAR_ICAL_URL`,
 e (para `upload-media`) `GOOGLE_CLIENT_ID/SECRET/REFRESH_TOKEN`,
 `DRIVE_FOLDER_ID`, `RESEND_API_KEY`, `MAIL_FROM/MAIL_TO`.
+
+Para o **Google Calendar** na aprovação (`decide-booking`):
+`GOOGLE_CALENDAR_REFRESH_TOKEN` (obrigatório — escopo
+`calendar.events`), opcionais `GOOGLE_CALENDAR_CLIENT_ID` /
+`GOOGLE_CALENDAR_CLIENT_SECRET` (senão reutiliza os do Drive) e
+`GOOGLE_CALENDAR_ID` (default `primary`). Sem o refresh token, a
+aprovação segue normal e o evento é apenas pulado. Dica: usar o mesmo
+calendário do `STUDIO_CALENDAR_ICAL_URL` faz os horários aprovados
+bloquearem a disponibilidade automaticamente.
 No Vault (pg_cron): `cron_secret`, `notification_worker_secret`.
 
 ---
