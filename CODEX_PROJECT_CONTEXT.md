@@ -3,7 +3,7 @@
 ## Atualização - notificações e período de gravação (2026-07-13)
 
 - A barra de News exibe somente a data da última atualização e o resumo das melhorias entregues. O layout autenticado possui overrides finais para iPhone XR e modelos atuais, incluindo safe areas, `100dvh`, modais, notificações e navegação inferior.
-- O formulário de agendamento não solicita mais RG do solicitante nem dos convidados. Novos payloads são normalizados no backend e descartam esse campo mesmo quando enviados por clientes antigos; CPF e os demais dados continuam obrigatórios.
+- O formulário de agendamento não solicita mais RG nem CPF do solicitante nem dos convidados (minimização de dados/LGPD). Novos payloads são normalizados no backend e descartam esses campos mesmo quando enviados por clientes antigos; nome, WhatsApp, e-mail e rede social continuam obrigatórios.
 - Toda nova solicitação de gravação cria avisos pessoais em `app_notifications` para perfis `admin` e `developer`. O sininho é visível a qualquer usuário autenticado, com leitura individual/em lote, atualização em tempo real e polling de contingência.
 - Somente o aprovador principal decide. `decide-booking` chama a RPC autenticada `set_booking_status_v1`; a decisão, o aviso no app do solicitante e o outbox do e-mail são gravados na mesma transação. A Edge Function envia o e-mail de aprovação/rejeição sem expor secrets no frontend.
 - Agendamentos agora possuem início e término (`requested_time` e `requested_end_time`). O fluxo regular permite selecionar um intervalo contínuo de blocos livres; o fluxo excepcional aceita intervalos de 30 minutos entre 17h30 e 23h30. O banco serializa pedidos por data e rejeita períodos sobrepostos.

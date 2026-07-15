@@ -301,7 +301,6 @@ export type AppNotification = {
 export type BookingParticipant = {
   id: string;
   full_name: string;
-  cpf: string | null;
   email: string | null;
   whatsapp: string | null;
   social: string | null;
@@ -310,7 +309,6 @@ export type BookingParticipant = {
 export type BookingRequest = {
   id: string;
   requester_name: string;
-  requester_cpf: string | null;
   requester_email: string | null;
   requester_whatsapp: string | null;
   requester_social: string | null;
@@ -330,7 +328,7 @@ export async function listBookingRequests(): Promise<BookingRequest[]> {
     supabase
       .from('studio_booking_requests')
       .select(
-        'id, requester_name, requester_cpf, requester_email, requester_whatsapp, requester_social, requested_date, requested_time, requested_end_time, status, created_at, studio_booking_participants(id, full_name, cpf, email, whatsapp, social)',
+        'id, requester_name, requester_email, requester_whatsapp, requester_social, requested_date, requested_time, requested_end_time, status, created_at, studio_booking_participants(id, full_name, email, whatsapp, social)',
       )
       .order('created_at', { ascending: false })
       .limit(100),

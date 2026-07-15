@@ -38,7 +38,7 @@ export const BOOKING_TERMS: TermDocument = {
     {
       heading: '3. Cadastro, controle de acesso e responsabilidade pelas informações',
       paragraphs: [
-        'Para reservar o estúdio, o solicitante deverá informar, no app, seus dados e os dados dos participantes/convidados, incluindo nome, CPF, WhatsApp, e-mail, rede social, data e horário pretendidos, além de assinatura digital quando exigida.',
+        'Para reservar o estúdio, o solicitante deverá informar, no app, seus dados e os dados dos participantes/convidados, incluindo nome, WhatsApp, e-mail, rede social, data e horário pretendidos, além de assinatura digital quando exigida.',
         'O solicitante declara que as informações prestadas são verdadeiras, completas e atualizadas, responsabilizando-se por dados incorretos, omissões, uso indevido de identidade de terceiros ou inclusão de participantes sem autorização.',
         'Somente pessoas previamente informadas e autorizadas poderão acessar ou permanecer no estúdio. A administração poderá solicitar documento de identificação e impedir a entrada de pessoas não cadastradas, não autorizadas ou que representem risco à segurança ou à ordem do local.',
       ],
@@ -114,7 +114,7 @@ export const BOOKING_TERMS: TermDocument = {
       heading: '12. Tratamento de dados pessoais e LGPD',
       paragraphs: [
         'Para realizar controle de acesso, gestão de reservas, segurança do estúdio, registro de aceite, responsabilização, comunicação administrativa e prevenção de incidentes, a ASSEGO poderá tratar dados pessoais do solicitante e dos participantes cadastrados no app.',
-        'Poderão ser tratados: nome, CPF, telefone/WhatsApp, e-mail, rede social, data e horário da reserva, assinatura digital, aceite do termo, registros técnicos do app, dados de dispositivo/navegador, endereço IP quando disponível, histórico da solicitação e dados necessários à segurança e administração do espaço.',
+        'Poderão ser tratados: nome, telefone/WhatsApp, e-mail, rede social, data e horário da reserva, assinatura digital, aceite do termo, registros técnicos do app, dados de dispositivo/navegador, endereço IP quando disponível, histórico da solicitação e dados necessários à segurança e administração do espaço.',
         'Os dados serão acessados apenas por pessoas autorizadas, pelo tempo necessário ao cumprimento das finalidades acima, observadas obrigações legais, administrativas, segurança institucional e eventual necessidade de defesa de direitos.',
         'O titular poderá solicitar informações, correção ou tratamento adequado de seus dados pelos canais indicados pela ASSEGO, observadas as limitações legais e a necessidade de manutenção de registros para segurança, prestação de contas e defesa de direitos.',
       ],

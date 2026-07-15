@@ -13,8 +13,8 @@
 -- (não some a linha, para não quebrar histórico/estatística e a FK da
 -- assinatura), enquanto a trilha `legal_signatures` permanece intacta —
 -- base legal de guarda: cumprimento de obrigação/defesa de direitos
--- (LGPD art. 7º, VI e art. 16, I). A assinatura é a prova de não-repúdio;
--- por isso o CPF que consta no payload assinado é mantido lá, e apenas lá.
+-- (LGPD art. 7º, VI e art. 16, I). A assinatura é a prova de não-repúdio.
+-- Observação: CPF e RG não são mais coletados pelo app.
 -- =====================================================================
 
 create extension if not exists "pgcrypto";
@@ -28,10 +28,10 @@ begin;
 -- ---------------------------------------------------------------------
 -- 1) Expurgo periódico por tempo de retenção.
 --    p_retention_months: quantos meses manter a PII após o encerramento
---    da finalidade. Padrão: 12 meses. Ajuste conforme política da ASSEGO.
+--    da finalidade. Padrão: 6 meses. Ajuste conforme política da ASSEGO.
 -- ---------------------------------------------------------------------
 create or replace function public.purge_expired_booking_pii_v1(
-  p_retention_months integer default 12
+  p_retention_months integer default 6
 )
 returns jsonb
 language plpgsql
@@ -53,7 +53,6 @@ begin
   with anonymized as (
     update public.studio_booking_requests r
     set requester_name = '[dados removidos]',
-        requester_cpf = null,
         requester_email = null,
         requester_whatsapp = null,
         requester_social = null
@@ -68,7 +67,6 @@ begin
   with anonymized as (
     update public.studio_booking_participants p
     set full_name = '[dados removidos]',
-        cpf = null,
         email = null,
         whatsapp = null,
         social = null
@@ -105,8 +103,8 @@ begin
   )
   select count(*) into v_checkout_hist from anonymized;
 
-  -- Fila de notificações já entregues: o payload carrega PII completa
-  -- (inclusive CPF de convidados). Depois de enviada e fora da janela, apaga.
+  -- Fila de notificações já entregues: o payload carrega PII (nome, e-mail,
+  -- WhatsApp de convidados). Depois de enviada e fora da janela, apaga.
   with deleted as (
     delete from public.notification_outbox o
     where o.status = 'sent'
@@ -172,7 +170,6 @@ begin
   with anonymized as (
     update public.studio_booking_requests r
     set requester_name = '[dados removidos]',
-        requester_cpf = null,
         requester_email = null,
         requester_whatsapp = null,
         requester_social = null
@@ -185,7 +182,6 @@ begin
   with anonymized as (
     update public.studio_booking_participants p
     set full_name = '[dados removidos]',
-        cpf = null,
         email = null,
         whatsapp = null,
         social = null
@@ -277,13 +273,13 @@ begin
   perform cron.schedule(
     'assego-purge-expired-pii-daily',
     '30 4 * * *', -- 04:30 UTC (01:30 em Brasília), fora do horário de pico
-    $cron$ select public.purge_expired_booking_pii_v1(12); $cron$
+    $cron$ select public.purge_expired_booking_pii_v1(6); $cron$
   );
 end;
 $$;
 
 -- Conferir / rodar manualmente:
--- select public.purge_expired_booking_pii_v1(12);           -- expurgo por janela
+-- select public.purge_expired_booking_pii_v1(6);            -- expurgo por janela
 -- select public.anonymize_titular_pii_v1('<uuid_do_titular>'); -- pedido do titular
 -- select * from cron.job where jobname = 'assego-purge-expired-pii-daily';
 -- select cron.unschedule('assego-purge-expired-pii-daily');

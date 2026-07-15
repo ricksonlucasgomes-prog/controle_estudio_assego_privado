@@ -1056,12 +1056,11 @@ exatamente o que a Edge Function `submit-booking` insere. Não renomear
 sem ajustar a função.
 
 ```sql
+-- RG e CPF foram REMOVIDOS da coleta (minimização de dados/LGPD).
 studio_booking_requests
   id uuid primary key default gen_random_uuid()
   requester_id uuid references auth.users(id)
   requester_name text not null
-  requester_rg text
-  requester_cpf text
   requester_email text
   requester_whatsapp text
   requester_social text
@@ -1075,8 +1074,6 @@ studio_booking_participants
   id uuid primary key default gen_random_uuid()
   booking_request_id uuid references studio_booking_requests(id) on delete cascade
   full_name text not null
-  rg text
-  cpf text
   email text
   whatsapp text
   social text

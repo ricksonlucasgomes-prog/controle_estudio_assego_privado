@@ -324,7 +324,6 @@ declare
   v_requested_time text;
   v_requested_end_time text;
   v_requester_name text;
-  v_requester_cpf text;
   v_requester_whatsapp text;
   v_requester_social text;
   v_signer_name text;
@@ -372,13 +371,11 @@ begin
   end if;
 
   v_requester_name := trim(coalesce(p_requester->>'name', ''));
-  v_requester_cpf := trim(coalesce(p_requester->>'cpf', ''));
   v_requester_whatsapp := trim(coalesce(p_requester->>'whatsapp', ''));
   v_requester_social := trim(coalesce(p_requester->>'social', ''));
   v_signer_name := trim(coalesce(p_signature->>'fullName', ''));
 
   if length(v_requester_name) not between 3 and 160
-    or length(v_requester_cpf) not between 11 and 20
     or length(v_requester_whatsapp) not between 8 and 30
     or length(v_requester_social) not between 2 and 120
     or length(v_signer_name) not between 3 and 160
@@ -453,7 +450,6 @@ begin
   for v_guest in select value from jsonb_array_elements(coalesce(p_guests, '[]'::jsonb))
   loop
     if length(trim(coalesce(v_guest->>'name', ''))) not between 3 and 160
-      or length(trim(coalesce(v_guest->>'cpf', ''))) not between 11 and 20
       or length(trim(coalesce(v_guest->>'email', ''))) not between 5 and 254
       or length(trim(coalesce(v_guest->>'whatsapp', ''))) not between 8 and 30
       or length(trim(coalesce(v_guest->>'social', ''))) not between 2 and 120
@@ -465,7 +461,6 @@ begin
   insert into public.studio_booking_requests (
     requester_id,
     requester_name,
-    requester_cpf,
     requester_email,
     requester_whatsapp,
     requester_social,
@@ -478,7 +473,6 @@ begin
   ) values (
     p_user_id,
     v_requester_name,
-    v_requester_cpf,
     lower(trim(p_auth_email)),
     v_requester_whatsapp,
     v_requester_social,
@@ -491,12 +485,11 @@ begin
   ) returning id into v_booking_id;
 
   insert into public.studio_booking_participants (
-    booking_request_id, full_name, cpf, email, whatsapp, social
+    booking_request_id, full_name, email, whatsapp, social
   )
   select
     v_booking_id,
     trim(value->>'name'),
-    trim(value->>'cpf'),
     lower(trim(value->>'email')),
     trim(value->>'whatsapp'),
     trim(value->>'social')
@@ -506,7 +499,6 @@ begin
     'booking_request_id', v_booking_id,
     'requester', jsonb_build_object(
       'name', v_requester_name,
-      'cpf', v_requester_cpf,
       'email', lower(trim(p_auth_email)),
       'whatsapp', v_requester_whatsapp,
       'social', v_requester_social

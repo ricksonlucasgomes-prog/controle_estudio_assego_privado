@@ -75,7 +75,6 @@ function validatePayload(body: JsonRecord): {
 
   const requiredRequester = [
     text(requester.name, 160),
-    text(requester.cpf, 20),
     text(requester.whatsapp, 30),
     text(requester.social, 120),
   ]
@@ -167,20 +166,18 @@ function validatePayload(body: JsonRecord): {
 
   const normalizedRequester: JsonRecord = {
     name: text(requester.name, 160),
-    cpf: text(requester.cpf, 20),
     whatsapp: text(requester.whatsapp, 30),
     social: text(requester.social, 120),
   }
   const normalizedGuests = guests.map((guest) => ({
     name: text(guest.name, 160),
-    cpf: text(guest.cpf, 20),
     email: text(guest.email, 254).toLowerCase(),
     whatsapp: text(guest.whatsapp, 30),
     social: text(guest.social, 120),
   }))
 
   for (const guest of normalizedGuests) {
-    const requiredGuest = [guest.name, guest.cpf, guest.email, guest.whatsapp, guest.social]
+    const requiredGuest = [guest.name, guest.email, guest.whatsapp, guest.social]
     if (requiredGuest.some((value) => value.length < 2)) throw new Error('GUEST_INVALID')
   }
 
@@ -298,7 +295,6 @@ async function sendBookingNotificationEmail(
         `E-mail: ${text(requester.email, 254) || '-'}\n` +
         `WhatsApp: ${text(requester.whatsapp, 30) || '-'}\n` +
         `Rede social: ${text(requester.social, 120) || '-'}\n\n` +
-        `(CPF do solicitante e dos convidados NAO trafega por e-mail: consulte no app, autenticado, por minimizacao de dados/LGPD.)\n\n` +
         `Data: ${text(booking.date, 10)}\n` +
         `Horário de início: ${text(booking.time, 5)}\n` +
         `Horário de término: ${text(booking.endTime, 5)}\n` +

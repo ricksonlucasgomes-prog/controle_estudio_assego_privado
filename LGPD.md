@@ -9,14 +9,15 @@ pedidos dos titulares. Complementa o Termo de Uso exibido no app
 
 | Contexto | Dados pessoais | Onde ficam |
 |---|---|---|
-| Agendamento do estúdio | Nome, CPF, WhatsApp, e-mail, rede social, data/horário | `studio_booking_requests`, `studio_booking_participants` |
-| Assinatura/aceite do termo | Nome, e-mail, IP, user-agent, hash do payload assinado (contém CPF) | `legal_signatures` (imutável) |
+| Agendamento do estúdio | Nome, WhatsApp, e-mail, rede social, data/horário | `studio_booking_requests`, `studio_booking_participants` |
+| Assinatura/aceite do termo | Nome, e-mail, IP, user-agent, hash do payload assinado | `legal_signatures` (imutável) |
 | Pedido de equipamento | Nome, e-mail, justificativa | `studio_equipment_requests` |
 | Retirada de equipamento | Nome, e-mail, foto | `studio_checkouts`, `studio_checkout_history` |
-| Notificações | Nome/e-mail no corpo; payloads de fila com PII completa | `app_notifications`, `notification_outbox` |
+| Notificações | Nome/e-mail no corpo; payloads de fila com PII | `app_notifications`, `notification_outbox` |
 
-> O **CPF não trafega por e-mail** — é consultável apenas no app, autenticado
-> (princípio da minimização). O **RG deixou de ser coletado**.
+> **RG e CPF não são coletados** pelo app (princípio da minimização — LGPD
+> art. 6º, III). O controle de acesso ao estúdio usa nome + contato +
+> assinatura digital.
 
 ## 2. Bases legais (LGPD art. 7º)
 
@@ -31,7 +32,7 @@ pedidos dos titulares. Complementa o Termo de Uso exibido no app
 
 Rotina técnica: [`supabase/data_retention.sql`](supabase/data_retention.sql).
 
-- **Janela padrão: 12 meses** após o encerramento da finalidade (data da
+- **Janela padrão: 6 meses** após o encerramento da finalidade (data da
   reserva / devolução / finalização do pedido). Ajustável no parâmetro
   `p_retention_months` da função e no corpo do job de cron.
 - Passada a janela, a **PII operacional é anonimizada** (`[dados removidos]` /
@@ -42,13 +43,22 @@ Rotina técnica: [`supabase/data_retention.sql`](supabase/data_retention.sql).
 Agendamento automático (pg_cron, diário às 04:30 UTC):
 ```sql
 -- já incluso em data_retention.sql; requer extensão pg_cron habilitada
-select public.purge_expired_booking_pii_v1(12);
+select public.purge_expired_booking_pii_v1(6);
 ```
 
 ## 4. Atender pedidos do titular (art. 18)
 
-Canal de contato: definir e publicar um e-mail/telefone oficial da ASSEGO
-(ex.: o mesmo canal de comunicação institucional). Registrar cada pedido.
+**Canal do titular / Encarregado (DPO) — controle do estúdio:**
+- **Telefone/WhatsApp:** (62) 99434-9416
+- **E-mail:** ricksonlucasgomes@gmail.com
+
+**Contato institucional da ASSEGO:**
+- **E-mail:** comunicacaoassego@gmail.com
+- **Site:** https://www.assego.com.br
+- **Localização:** Goiânia/GO
+- **Endereço e telefone institucional:** _a confirmar/publicar pela ASSEGO._
+
+Registrar cada pedido (data, titular, solicitação e providência tomada).
 
 - **Acesso / confirmação de tratamento (art. 18, I–II)**: a diretoria consulta
   os dados do titular no próprio app (autenticada) ou no SQL Editor.
@@ -61,6 +71,7 @@ Canal de contato: definir e publicar um e-mail/telefone oficial da ASSEGO
   Isso anonimiza toda a PII operacional daquele titular sob demanda (agendamentos,
   participantes, pedidos e retiradas), **mantendo a assinatura** por base legal, e
   registra o atendimento em `audit_logs` (`action = 'lgpd_erasure_fulfilled'`).
+  Pedidos podem ser feitos pelos canais do titular acima.
 
   Para descobrir o `uuid` a partir do e-mail:
   ```sql
@@ -77,7 +88,8 @@ Canal de contato: definir e publicar um e-mail/telefone oficial da ASSEGO
 
 ## 6. Pendências recomendadas
 
-- Publicar o **canal oficial do titular** (e-mail/telefone) no app e no termo.
-- Confirmar com a ASSEGO o **prazo de retenção** definitivo (hoje 12 meses).
+- Publicar o **endereço e telefone institucional** da ASSEGO (o canal do
+  titular e o e-mail institucional já constam na seção 4).
+- Confirmar com a ASSEGO o **prazo de retenção** definitivo (hoje 6 meses).
 - Manter o `Termo_de_Uso_Assego.pdf` **sincronizado** com o texto do app
-  (a menção a RG foi removida do texto em `src/termsContent.ts`).
+  (RG e CPF já foram removidos de `src/termsContent.ts` e do PDF).

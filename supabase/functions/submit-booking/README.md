@@ -37,7 +37,6 @@ Hoje, para Badu e Sérgio receberem as notificações internas, eles precisam:
     "name": "Lucas Rickson Gomes da Silva",
     "email": "...",
     "whatsapp": "...",
-    "cpf": "...",
     "social": "...",
     "date": "2026-07-09",
     "time": "12:00"
@@ -47,7 +46,6 @@ Hoje, para Badu e Sérgio receberem as notificações internas, eles precisam:
       "name": "Badu",
       "whatsapp": "...",
       "email": "...",
-      "cpf": "...",
       "social": "..."
     }
   ],
