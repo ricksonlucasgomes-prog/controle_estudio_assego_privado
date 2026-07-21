@@ -183,6 +183,34 @@ function parseMaterialLinks(value: string): string[] {
   return value.split(/\r?\n/).map((item) => item.trim()).filter(Boolean);
 }
 
+// ---------------------------------------------------------------------
+// CPF — REINTRODUZIDO em 21/07/2026 por decisão expressa do responsável
+// pelo sistema (Lucas Rickson). Reverte conscientemente a minimização de
+// dados que havia retirado CPF e RG do fluxo de agendamento (ver
+// supabase/studio_booking.sql e supabase/remove_booking_rg.sql).
+// Somente o CPF volta a ser coletado; o RG permanece fora da coleta.
+// Consequência conhecida: o CPF do solicitante e dos convidados volta a
+// trafegar no e-mail de notificação em texto puro.
+// ---------------------------------------------------------------------
+function formatCpf(value: string): string {
+  const digits = value.replace(/\D/g, '').slice(0, 11);
+  const blocks = [digits.slice(0, 3), digits.slice(3, 6), digits.slice(6, 9)].filter(Boolean);
+  const check = digits.slice(9, 11);
+  return blocks.join('.') + (check ? `-${check}` : '');
+}
+
+function isValidCpf(value: string): boolean {
+  const digits = value.replace(/\D/g, '');
+  if (digits.length !== 11 || /^(\d)\1{10}$/.test(digits)) return false;
+  const checkDigit = (length: number) => {
+    let sum = 0;
+    for (let i = 0; i < length; i += 1) sum += Number(digits[i]) * (length + 1 - i);
+    const rest = (sum * 10) % 11;
+    return rest === 10 ? 0 : rest;
+  };
+  return checkDigit(9) === Number(digits[9]) && checkDigit(10) === Number(digits[10]);
+}
+
 // 2. Adicionada a aba de Agenda no Menu
 const MAIN_TABS: TabItem[] = [
   { id: 'agenda', label: 'Agenda', icon: CalendarDays },
@@ -394,9 +422,9 @@ export function App() {
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [showLegalPopup, setShowLegalPopup] = useState(false);
   const [requesterData, setRequesterData] = useState({
-    name: '', email: '', whatsapp: '', social: '', date: '', time: '', endTime: ''
+    name: '', cpf: '', email: '', whatsapp: '', social: '', date: '', time: '', endTime: ''
   });
-  const [guestsData, setGuestsData] = useState<{name: string, email: string, whatsapp: string, social: string}[]>([]);
+  const [guestsData, setGuestsData] = useState<{name: string, cpf: string, email: string, whatsapp: string, social: string}[]>([]);
 
   // 5. Gate jurídico: leitura completa do Termo (popup com scroll obrigatório) + assinatura digital
   const [showTermPopup, setShowTermPopup] = useState(false);
@@ -1115,7 +1143,7 @@ export function App() {
 
   function resetBookingForm() {
     bookingIdempotencyKey.current = crypto.randomUUID();
-    setRequesterData({ name: '', email: userEmail, whatsapp: '', social: '', date: '', time: '', endTime: '' });
+    setRequesterData({ name: '', cpf: '', email: userEmail, whatsapp: '', social: '', date: '', time: '', endTime: '' });
     setGuestsData([]);
     setAfterHoursMode(false);
     setProgramName('');
@@ -1276,6 +1304,19 @@ export function App() {
       return;
     }
 
+    // CPF obrigatório e verificado (dígitos verificadores) para solicitante e
+    // convidados — coleta reintroduzida por decisão do responsável.
+    if (!isValidCpf(requesterData.cpf)) {
+      alert('Informe um CPF válido do solicitante (11 dígitos).');
+      return;
+    }
+
+    const guestWithInvalidCpf = guestsData.findIndex((guest) => !isValidCpf(guest.cpf));
+    if (guestWithInvalidCpf >= 0) {
+      alert(`Informe um CPF válido para o convidado ${guestWithInvalidCpf + 1} (11 dígitos).`);
+      return;
+    }
+
     if (!requesterData.date || !requesterData.time || !requesterData.endTime) {
       alert(afterHoursMode
         ? 'Informe a data e os horários de início e término antes de enviar.'
@@ -1433,7 +1474,7 @@ export function App() {
   };
 
   const addGuest = () => {
-    setGuestsData((current) => [...current, { name: '', email: '', whatsapp: '', social: '' }]);
+    setGuestsData((current) => [...current, { name: '', cpf: '', email: '', whatsapp: '', social: '' }]);
   };
 
   const removeGuest = (index: number) => {
@@ -2765,6 +2806,10 @@ export function App() {
                   <input id="req-name" required type="text" placeholder="Seu nome completo" value={requesterData.name} onChange={(e) => setRequesterData({ ...requesterData, name: e.target.value })} />
                 </div>
                 <div className="form-group">
+                  <label htmlFor="req-cpf">CPF</label>
+                  <input id="req-cpf" required type="text" inputMode="numeric" maxLength={14} placeholder="000.000.000-00" value={requesterData.cpf} onChange={(e) => setRequesterData({ ...requesterData, cpf: formatCpf(e.target.value) })} />
+                </div>
+                <div className="form-group">
                   <label htmlFor="req-email">E-mail</label>
                   <input id="req-email" required readOnly type="email" placeholder="nome@email.com" value={userEmail} />
                 </div>
@@ -3012,6 +3057,10 @@ export function App() {
                     <div className="form-group full">
                       <label>Nome completo</label>
                       <input required type="text" placeholder="Nome do convidado" value={guest.name} onChange={(e) => updateGuest(index, 'name', e.target.value)} />
+                    </div>
+                    <div className="form-group">
+                      <label>CPF</label>
+                      <input required type="text" inputMode="numeric" maxLength={14} placeholder="000.000.000-00" value={guest.cpf} onChange={(e) => updateGuest(index, 'cpf', formatCpf(e.target.value))} />
                     </div>
                     <div className="form-group">
                       <label>WhatsApp</label>

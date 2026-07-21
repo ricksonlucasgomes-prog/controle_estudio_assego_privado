@@ -14,7 +14,12 @@
 -- assinatura), enquanto a trilha `legal_signatures` permanece intacta —
 -- base legal de guarda: cumprimento de obrigação/defesa de direitos
 -- (LGPD art. 7º, VI e art. 16, I). A assinatura é a prova de não-repúdio.
--- Observação: CPF e RG não são mais coletados pelo app.
+-- Observação: o RG não é mais coletado pelo app. O CPF VOLTOU a ser
+-- coletado em 21/07/2026 por decisão do responsável (ver
+-- supabase/readd_booking_cpf.sql) e por isso `requester_cpf` e `cpf`
+-- entram na anonimização abaixo, junto com os demais dados pessoais.
+-- Pré-requisito: rode `readd_booking_cpf.sql` ANTES deste arquivo, senão
+-- as colunas não existem e as funções falham ao ser criadas.
 -- =====================================================================
 
 create extension if not exists "pgcrypto";
@@ -53,6 +58,7 @@ begin
   with anonymized as (
     update public.studio_booking_requests r
     set requester_name = '[dados removidos]',
+        requester_cpf = null,
         requester_email = null,
         requester_whatsapp = null,
         requester_social = null
@@ -67,6 +73,7 @@ begin
   with anonymized as (
     update public.studio_booking_participants p
     set full_name = '[dados removidos]',
+        cpf = null,
         email = null,
         whatsapp = null,
         social = null
@@ -170,6 +177,7 @@ begin
   with anonymized as (
     update public.studio_booking_requests r
     set requester_name = '[dados removidos]',
+        requester_cpf = null,
         requester_email = null,
         requester_whatsapp = null,
         requester_social = null
@@ -182,6 +190,7 @@ begin
   with anonymized as (
     update public.studio_booking_participants p
     set full_name = '[dados removidos]',
+        cpf = null,
         email = null,
         whatsapp = null,
         social = null

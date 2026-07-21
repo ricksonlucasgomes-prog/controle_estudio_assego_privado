@@ -47,6 +47,13 @@ function text(value: unknown, max: number): string {
   return String(value ?? '').trim().slice(0, max)
 }
 
+// CPF reintroduzido em 21/07/2026 por decisão do responsável pelo sistema,
+// revertendo conscientemente a minimização que o havia removido. Só o CPF
+// volta; o RG segue fora da coleta.
+function cpfDigits(value: unknown): string {
+  return String(value ?? '').replace(/\D/g, '').slice(0, 11)
+}
+
 function validateUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
 }
@@ -79,6 +86,7 @@ function validatePayload(body: JsonRecord): {
     text(requester.social, 120),
   ]
   if (requiredRequester.some((value) => value.length < 2)) throw new Error('REQUESTER_INVALID')
+  if (cpfDigits(requester.cpf).length !== 11) throw new Error('REQUESTER_CPF_INVALID')
 
   const date = text(booking.date, 10)
   const time = text(booking.time, 5)
@@ -166,11 +174,14 @@ function validatePayload(body: JsonRecord): {
 
   const normalizedRequester: JsonRecord = {
     name: text(requester.name, 160),
+    cpf: text(requester.cpf, 20),
+    email: text(requester.email, 254).toLowerCase(),
     whatsapp: text(requester.whatsapp, 30),
     social: text(requester.social, 120),
   }
   const normalizedGuests = guests.map((guest) => ({
     name: text(guest.name, 160),
+    cpf: text(guest.cpf, 20),
     email: text(guest.email, 254).toLowerCase(),
     whatsapp: text(guest.whatsapp, 30),
     social: text(guest.social, 120),
@@ -179,6 +190,7 @@ function validatePayload(body: JsonRecord): {
   for (const guest of normalizedGuests) {
     const requiredGuest = [guest.name, guest.email, guest.whatsapp, guest.social]
     if (requiredGuest.some((value) => value.length < 2)) throw new Error('GUEST_INVALID')
+    if (cpfDigits(guest.cpf).length !== 11) throw new Error('GUEST_CPF_INVALID')
   }
 
   return {
@@ -260,6 +272,7 @@ async function sendBookingNotificationEmail(
   const guestsList = guests.length
     ? guests.map((guest, index) =>
         `${index + 1}. ${text(guest.name, 160) || '-'}\n` +
+        `   CPF: ${text(guest.cpf, 20) || '-'}\n` +
         `   E-mail: ${text(guest.email, 254) || '-'}\n` +
         `   WhatsApp: ${text(guest.whatsapp, 30) || '-'}\n` +
         `   Rede social: ${text(guest.social, 120) || '-'}`
@@ -292,6 +305,7 @@ async function sendBookingNotificationEmail(
         `Nova solicitação de agendamento no Assego Studio.\n\n` +
         `===== Dados do solicitante =====\n` +
         `Nome: ${text(requester.name, 160) || '-'}\n` +
+        `CPF: ${text(requester.cpf, 20) || '-'}\n` +
         `E-mail: ${text(requester.email, 254) || '-'}\n` +
         `WhatsApp: ${text(requester.whatsapp, 30) || '-'}\n` +
         `Rede social: ${text(requester.social, 120) || '-'}\n\n` +
