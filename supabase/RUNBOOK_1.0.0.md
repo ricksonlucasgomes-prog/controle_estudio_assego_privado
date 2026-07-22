@@ -169,3 +169,63 @@ scripts. Antes de começar, tirar um backup no painel
 (**Database → Backups**). Como o app já não coleta CPF desde a v1.0.0, a perda
 desses dados é intencional — é justamente a minimização exigida pela LGPD
 (ver [LGPD.md](../LGPD.md)).
+
+---
+
+## Adendo — mudanças pós-1.0.0 (CPF e CEP)
+
+Depois da v1.0.0, por decisão expressa do responsável pelo sistema, parte da
+minimização foi **conscientemente revertida**:
+
+- **21/07/2026 — CPF voltou** a ser coletado (solicitante e convidados). Ver
+  `readd_booking_cpf.sql`. O RG **permanece fora**.
+- **22/07/2026 — CEP passou a ser coletado** (solicitante e convidados), com
+  validação de existência via **ViaCEP** no front-end e na Edge Function.
+
+> ⚠️ A **seção 10** deste runbook está desatualizada por causa disto: a
+> conferência que exige "0 linhas" para as colunas de CPF **não vale mais**.
+> Agora `requester_cpf` / `cpf` **e** `requester_cep` / `cep` **devem existir**
+> (só `requester_rg` / `rg` continuam ausentes).
+
+### Aplicar a migração do CEP
+
+1. **SQL Editor** — rodar `apply_cep_migration.sql` (script único e idempotente:
+   cria as colunas `requester_cep`/`cep`, recria `create_signed_booking_v1` com o
+   CEP e atualiza as funções de anonimização). *Deve retornar "Success. No rows
+   returned".*
+2. **Edge Functions** (terminal, CLI do Supabase):
+   ```powershell
+   supabase functions deploy submit-booking
+   supabase functions deploy process-notification-outbox
+   ```
+3. **Frontend** — `git push` na `main` (o Vercel builda sozinho). Traz a máscara
+   e a validação de CEP, além do popup de notificações.
+
+Ordem obrigatória **SQL → Edge Functions → frontend**: a RPC nova aceita CEP; se
+o frontend subir antes da RPC, o agendamento com CEP falharia.
+
+### Conferência do CEP
+
+```sql
+-- as 2 colunas de CEP devem existir:
+select table_name, column_name from information_schema.columns
+where table_schema = 'public' and column_name in ('requester_cep', 'cep')
+order by table_name;
+-- esperado: studio_booking_participants.cep e studio_booking_requests.requester_cep
+```
+
+### Opcional — espelhar agendamentos no Google Sheets (tempo real)
+
+A Edge Function `submit-booking` grava cada agendamento (com todos os dados
+pessoais, inclusive CPF e CEP) numa planilha do Google Sheets, via Apps Script
+Web App. **Só ativa quando os secrets estiverem definidos** — sem eles, o app
+funciona normalmente e apenas não grava na planilha.
+
+```powershell
+supabase secrets set SHEETS_WEBHOOK_URL="https://script.google.com/macros/s/.../exec"
+supabase secrets set SHEETS_WEBHOOK_SECRET="<mesmo segredo do Apps Script>"
+supabase functions deploy submit-booking
+```
+
+Passo a passo para criar a planilha + o Apps Script:
+[google_sheets_apps_script.md](google_sheets_apps_script.md).
