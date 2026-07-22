@@ -18,8 +18,12 @@
 -- coletado em 21/07/2026 por decisão do responsável (ver
 -- supabase/readd_booking_cpf.sql) e por isso `requester_cpf` e `cpf`
 -- entram na anonimização abaixo, junto com os demais dados pessoais.
--- Pré-requisito: rode `readd_booking_cpf.sql` ANTES deste arquivo, senão
--- as colunas não existem e as funções falham ao ser criadas.
+-- O CEP passou a ser coletado em 22/07/2026 (ver supabase/add_booking_cep.sql)
+-- e, sendo dado pessoal (compõe endereço), `requester_cep` e `cep` também
+-- entram na anonimização abaixo.
+-- Pré-requisito: rode `readd_booking_cpf.sql` E `add_booking_cep.sql` ANTES
+-- deste arquivo, senão as colunas não existem e as funções falham ao ser
+-- criadas.
 -- =====================================================================
 
 create extension if not exists "pgcrypto";
@@ -59,6 +63,7 @@ begin
     update public.studio_booking_requests r
     set requester_name = '[dados removidos]',
         requester_cpf = null,
+        requester_cep = null,
         requester_email = null,
         requester_whatsapp = null,
         requester_social = null
@@ -74,6 +79,7 @@ begin
     update public.studio_booking_participants p
     set full_name = '[dados removidos]',
         cpf = null,
+        cep = null,
         email = null,
         whatsapp = null,
         social = null
@@ -178,6 +184,7 @@ begin
     update public.studio_booking_requests r
     set requester_name = '[dados removidos]',
         requester_cpf = null,
+        requester_cep = null,
         requester_email = null,
         requester_whatsapp = null,
         requester_social = null
@@ -191,6 +198,7 @@ begin
     update public.studio_booking_participants p
     set full_name = '[dados removidos]',
         cpf = null,
+        cep = null,
         email = null,
         whatsapp = null,
         social = null
