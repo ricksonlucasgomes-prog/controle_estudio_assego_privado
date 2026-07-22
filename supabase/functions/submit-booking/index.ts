@@ -54,6 +54,51 @@ function cpfDigits(value: unknown): string {
   return String(value ?? '').replace(/\D/g, '').slice(0, 11)
 }
 
+// CEP incluído em 22/07/2026 por decisão do responsável pelo sistema. O
+// formato (8 dígitos) é conferido em validatePayload; a EXISTÊNCIA real é
+// checada contra a API pública ViaCEP em assertCepsExist (abaixo).
+function cepDigits(value: unknown): string {
+  return String(value ?? '').replace(/\D/g, '').slice(0, 8)
+}
+
+// Consulta o ViaCEP para saber se o CEP existe de fato.
+//   - retorna true  -> CEP existe;
+//   - retorna false -> CEP com formato correto mas inexistente (ViaCEP `erro`);
+// Falha de rede/timeout/HTTP NÃO derruba a solicitação (fail-open): retorna
+// true para não deixar o agendamento refém da disponibilidade do ViaCEP — o
+// formato já foi garantido antes. Usa um cache por processo para não repetir
+// a mesma consulta quando vários convidados compartilham o mesmo CEP.
+const cepExistenceCache = new Map<string, boolean>()
+async function cepExists(digits: string): Promise<boolean> {
+  if (digits.length !== 8) return false
+  const cached = cepExistenceCache.get(digits)
+  if (cached !== undefined) return cached
+
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 4000)
+  try {
+    const res = await fetch(`https://viacep.com.br/ws/${digits}/json/`, { signal: controller.signal })
+    if (!res.ok) return true // indisponibilidade do ViaCEP não bloqueia
+    const data = await res.json().catch(() => null) as { erro?: unknown } | null
+    const exists = !(data && (data.erro === true || data.erro === 'true'))
+    cepExistenceCache.set(digits, exists)
+    return exists
+  } catch {
+    return true // rede/timeout: fail-open, o formato já foi validado
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
+// Verifica a existência do CEP do solicitante e de cada convidado. Só lança
+// erro quando o ViaCEP diz explicitamente que um CEP não existe.
+async function assertCepsExist(requester: JsonRecord, guests: JsonRecord[]): Promise<void> {
+  if (!(await cepExists(cepDigits(requester.cep)))) throw new Error('REQUESTER_CEP_NOT_FOUND')
+  for (const guest of guests) {
+    if (!(await cepExists(cepDigits(guest.cep)))) throw new Error('GUEST_CEP_NOT_FOUND')
+  }
+}
+
 function validateUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
 }
@@ -87,6 +132,7 @@ function validatePayload(body: JsonRecord): {
   ]
   if (requiredRequester.some((value) => value.length < 2)) throw new Error('REQUESTER_INVALID')
   if (cpfDigits(requester.cpf).length !== 11) throw new Error('REQUESTER_CPF_INVALID')
+  if (cepDigits(requester.cep).length !== 8) throw new Error('REQUESTER_CEP_INVALID')
 
   const date = text(booking.date, 10)
   const time = text(booking.time, 5)
@@ -175,6 +221,7 @@ function validatePayload(body: JsonRecord): {
   const normalizedRequester: JsonRecord = {
     name: text(requester.name, 160),
     cpf: text(requester.cpf, 20),
+    cep: text(requester.cep, 20),
     email: text(requester.email, 254).toLowerCase(),
     whatsapp: text(requester.whatsapp, 30),
     social: text(requester.social, 120),
@@ -182,6 +229,7 @@ function validatePayload(body: JsonRecord): {
   const normalizedGuests = guests.map((guest) => ({
     name: text(guest.name, 160),
     cpf: text(guest.cpf, 20),
+    cep: text(guest.cep, 20),
     email: text(guest.email, 254).toLowerCase(),
     whatsapp: text(guest.whatsapp, 30),
     social: text(guest.social, 120),
@@ -191,6 +239,7 @@ function validatePayload(body: JsonRecord): {
     const requiredGuest = [guest.name, guest.email, guest.whatsapp, guest.social]
     if (requiredGuest.some((value) => value.length < 2)) throw new Error('GUEST_INVALID')
     if (cpfDigits(guest.cpf).length !== 11) throw new Error('GUEST_CPF_INVALID')
+    if (cepDigits(guest.cep).length !== 8) throw new Error('GUEST_CEP_INVALID')
   }
 
   return {
@@ -199,6 +248,86 @@ function validatePayload(body: JsonRecord): {
     booking: normalizedBooking,
     signature,
     idempotencyKey,
+  }
+}
+
+// Envio em tempo real para uma planilha do Google Sheets, via Apps Script
+// Web App. Uma linha por agendamento, com todos os dados pessoais do
+// solicitante e dos convidados (incluindo CPF e CEP). É best-effort e
+// fail-open: se os secrets não estiverem configurados ou o webhook falhar, o
+// agendamento NÃO é bloqueado — apenas registra-se o erro no log.
+//   Secrets esperados (Supabase > Edge Functions):
+//     SHEETS_WEBHOOK_URL    -> URL do Apps Script publicado como app da web
+//     SHEETS_WEBHOOK_SECRET -> segredo compartilhado, conferido no Apps Script
+// Ver supabase/google_sheets_apps_script.md para o script e o passo a passo.
+async function appendBookingToSheet(input: {
+  requester: JsonRecord
+  guests: JsonRecord[]
+  booking: JsonRecord
+}, bookingId: string): Promise<void> {
+  const webhookUrl = Deno.env.get('SHEETS_WEBHOOK_URL')
+  if (!webhookUrl) return // integração desativada até configurar o secret
+
+  const requester = input.requester
+  const booking = input.booking
+  const program = isRecord(booking.program) ? booking.program : {}
+  const guests = input.guests
+
+  const guestBlock = guests.length
+    ? guests.map((guest, index) =>
+        `${index + 1}. ${text(guest.name, 160) || '-'} | CPF ${text(guest.cpf, 20) || '-'} | ` +
+        `CEP ${text(guest.cep, 20) || '-'} | ${text(guest.email, 254) || '-'} | ` +
+        `${text(guest.whatsapp, 30) || '-'} | ${text(guest.social, 120) || '-'}`
+      ).join('\n')
+    : ''
+
+  const scheduleType = text(booking.time, 5) > '17:00' ? 'Após 17h' : 'Regular'
+
+  const header = [
+    'Enviado em', 'ID', 'Status',
+    'Solicitante', 'CPF', 'CEP', 'E-mail', 'WhatsApp', 'Rede social',
+    'Data', 'Início', 'Término', 'Tipo',
+    'Programa', 'Formato', 'Orientações', 'Canal YouTube',
+    'Nº convidados', 'Convidados',
+  ]
+  const row = [
+    new Date().toISOString(),
+    bookingId,
+    'Pendente',
+    text(requester.name, 160),
+    text(requester.cpf, 20),
+    text(requester.cep, 20),
+    text(requester.email, 254),
+    text(requester.whatsapp, 30),
+    text(requester.social, 120),
+    text(booking.date, 10),
+    text(booking.time, 5),
+    text(booking.endTime, 5),
+    scheduleType,
+    text(program.name, 160),
+    program.format === 'live' ? 'Ao vivo' : 'Gravado',
+    text(program.productionNotes, 2000),
+    text(program.youtubeChannelUrl, 500),
+    guests.length,
+    guestBlock,
+  ]
+
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 5000)
+  try {
+    await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        secret: Deno.env.get('SHEETS_WEBHOOK_SECRET') ?? '',
+        sheetName: 'Agendamentos',
+        header,
+        row,
+      }),
+      signal: controller.signal,
+    })
+  } finally {
+    clearTimeout(timeout)
   }
 }
 
@@ -273,6 +402,7 @@ async function sendBookingNotificationEmail(
     ? guests.map((guest, index) =>
         `${index + 1}. ${text(guest.name, 160) || '-'}\n` +
         `   CPF: ${text(guest.cpf, 20) || '-'}\n` +
+        `   CEP: ${text(guest.cep, 20) || '-'}\n` +
         `   E-mail: ${text(guest.email, 254) || '-'}\n` +
         `   WhatsApp: ${text(guest.whatsapp, 30) || '-'}\n` +
         `   Rede social: ${text(guest.social, 120) || '-'}`
@@ -306,6 +436,7 @@ async function sendBookingNotificationEmail(
         `===== Dados do solicitante =====\n` +
         `Nome: ${text(requester.name, 160) || '-'}\n` +
         `CPF: ${text(requester.cpf, 20) || '-'}\n` +
+        `CEP: ${text(requester.cep, 20) || '-'}\n` +
         `E-mail: ${text(requester.email, 254) || '-'}\n` +
         `WhatsApp: ${text(requester.whatsapp, 30) || '-'}\n` +
         `Rede social: ${text(requester.social, 120) || '-'}\n\n` +
@@ -360,6 +491,17 @@ serve(async (req) => {
     }
 
     const input = validatePayload(body)
+
+    // Existência dos CEPs (ViaCEP). O formato já foi garantido em
+    // validatePayload; aqui só rejeitamos CEP explicitamente inexistente.
+    // Indisponibilidade do ViaCEP não bloqueia (fail-open em cepExists).
+    try {
+      await assertCepsExist(input.requester, input.guests)
+    } catch (cepError) {
+      const which = cepError instanceof Error && cepError.message.startsWith('GUEST') ? 'de um convidado' : 'do solicitante'
+      return jsonResponse(req, { error: `O CEP ${which} não foi encontrado. Confira e tente novamente.` }, 400)
+    }
+
     const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
     const anonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? ''
     const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
@@ -432,6 +574,17 @@ serve(async (req) => {
     const bookingId = text(result?.booking_id, 64)
     const outboxId = text(result?.outbox_id, 64)
     if (!bookingId) throw new Error('RPC_RESULT_INVALID')
+
+    // Espelha o agendamento no Google Sheets em tempo real. Só em criação
+    // nova (não em replay idempotente), para não duplicar linhas. Best-effort:
+    // qualquer falha aqui é registrada, mas não derruba a solicitação.
+    if (!result?.idempotent_replay) {
+      try {
+        await appendBookingToSheet(input, bookingId)
+      } catch (sheetError) {
+        console.error(`[${requestId}] Falha ao registrar no Google Sheets`, sheetError instanceof Error ? sheetError.message : sheetError)
+      }
+    }
 
     if (!outboxId) {
       return jsonResponse(req, {
