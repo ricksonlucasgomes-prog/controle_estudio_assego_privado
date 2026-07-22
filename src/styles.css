@@ -2364,6 +2364,12 @@ footer {
   width: min(440px, 100%);
 }
 
+/* Popup de notificações (sininho): reaproveita o modal padrão, com largura
+   mais contida que o modal de formulário. */
+.notif-modal {
+  width: min(560px, 100%);
+}
+
 .modal-content--small form {
   display: flex;
   flex-direction: column;
@@ -2478,6 +2484,18 @@ footer {
 .form-group input:required:valid:not(:placeholder-shown) {
   border-color: rgba(var(--ok-rgb), .55);
 }
+
+/* Feedback da validação de CEP (ViaCEP): cidade/UF quando válido, motivo
+   quando inválido. */
+.cep-hint {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .02em;
+  color: var(--muted);
+  text-transform: none;
+}
+.cep-hint--valid { color: var(--ok); }
+.cep-hint--invalid { color: var(--alert); }
 
 /* ===== Cards de convidados ===== */
 .guest-card {

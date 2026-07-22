@@ -211,6 +211,39 @@ function isValidCpf(value: string): boolean {
   return checkDigit(9) === Number(digits[9]) && checkDigit(10) === Number(digits[10]);
 }
 
+// ---------------------------------------------------------------------
+// CEP — coletado desde 22/07/2026 por decisão do responsável pelo sistema,
+// além do CPF já reintroduzido. "CEP válido" aqui significa EXISTÊNCIA: além
+// do formato (8 dígitos) consultamos a API pública ViaCEP. A checagem
+// definitiva também é feita no servidor (Edge Function submit-booking).
+// ---------------------------------------------------------------------
+function formatCep(value: string): string {
+  const digits = value.replace(/\D/g, '').slice(0, 8);
+  return digits.length > 5 ? `${digits.slice(0, 5)}-${digits.slice(5)}` : digits;
+}
+
+type CepCheck = { status: 'idle' | 'checking' | 'valid' | 'invalid'; label: string };
+type CepLookup = { ok: boolean; label: string };
+
+// Consulta o ViaCEP. ok=false só quando o formato é inválido ou o CEP não
+// existe (`erro`). Se o ViaCEP estiver indisponível (rede/HTTP), retorna
+// ok=true (fail-open): o envio não fica refém do serviço, e o servidor
+// revalida assim mesmo.
+async function fetchCepValidity(rawCep: string): Promise<CepLookup> {
+  const digits = rawCep.replace(/\D/g, '');
+  if (digits.length !== 8) return { ok: false, label: 'Informe um CEP com 8 dígitos.' };
+  try {
+    const response = await fetch(`https://viacep.com.br/ws/${digits}/json/`);
+    if (!response.ok) return { ok: true, label: 'Não foi possível confirmar o CEP agora.' };
+    const data = await response.json().catch(() => null);
+    if (!data || data.erro) return { ok: false, label: 'CEP não encontrado.' };
+    const place = [data.localidade, data.uf].filter(Boolean).join('/');
+    return { ok: true, label: place || 'CEP válido.' };
+  } catch {
+    return { ok: true, label: 'Não foi possível confirmar o CEP agora.' };
+  }
+}
+
 // 2. Adicionada a aba de Agenda no Menu
 const MAIN_TABS: TabItem[] = [
   { id: 'agenda', label: 'Agenda', icon: CalendarDays },
@@ -422,9 +455,12 @@ export function App() {
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [showLegalPopup, setShowLegalPopup] = useState(false);
   const [requesterData, setRequesterData] = useState({
-    name: '', cpf: '', email: '', whatsapp: '', social: '', date: '', time: '', endTime: ''
+    name: '', cpf: '', cep: '', email: '', whatsapp: '', social: '', date: '', time: '', endTime: ''
   });
-  const [guestsData, setGuestsData] = useState<{name: string, cpf: string, email: string, whatsapp: string, social: string}[]>([]);
+  const [guestsData, setGuestsData] = useState<{id: string, name: string, cpf: string, cep: string, email: string, whatsapp: string, social: string}[]>([]);
+  // Feedback da validação de existência do CEP (ViaCEP), por campo. A chave é
+  // 'requester' para o solicitante e o id do convidado para cada convidado.
+  const [cepChecks, setCepChecks] = useState<Record<string, CepCheck>>({});
 
   // 5. Gate jurídico: leitura completa do Termo (popup com scroll obrigatório) + assinatura digital
   const [showTermPopup, setShowTermPopup] = useState(false);
@@ -1143,8 +1179,9 @@ export function App() {
 
   function resetBookingForm() {
     bookingIdempotencyKey.current = crypto.randomUUID();
-    setRequesterData({ name: '', cpf: '', email: userEmail, whatsapp: '', social: '', date: '', time: '', endTime: '' });
+    setRequesterData({ name: '', cpf: '', cep: '', email: userEmail, whatsapp: '', social: '', date: '', time: '', endTime: '' });
     setGuestsData([]);
+    setCepChecks({});
     setAfterHoursMode(false);
     setProgramName('');
     setProgramFormat('recorded');
@@ -1156,6 +1193,27 @@ export function App() {
     setShowTermPopup(false);
     setTermAccepted(false);
     setSignatureName('');
+  }
+
+  // Valida a existência do CEP (ViaCEP) e guarda o resultado para mostrar
+  // "cidade/UF" (válido) ou o motivo (inválido) ao lado do campo. Disparado
+  // no onBlur de cada campo de CEP; o envio revalida o que ainda não estiver
+  // 'valid' (ver handleBookingSubmit).
+  async function runCepCheck(token: string, rawCep: string) {
+    if (!rawCep.replace(/\D/g, '')) {
+      setCepChecks((current) => {
+        const next = { ...current };
+        delete next[token];
+        return next;
+      });
+      return;
+    }
+    setCepChecks((current) => ({ ...current, [token]: { status: 'checking', label: 'Validando CEP…' } }));
+    const result = await fetchCepValidity(rawCep);
+    setCepChecks((current) => ({
+      ...current,
+      [token]: { status: result.ok ? 'valid' : 'invalid', label: result.label },
+    }));
   }
 
   // Mapa 'YYYY-MM-DD' -> dia retornado pela função studio-availability.
@@ -1317,6 +1375,19 @@ export function App() {
       return;
     }
 
+    // CEP obrigatório com formato válido (8 dígitos) para solicitante e
+    // convidados. A existência (ViaCEP) é conferida logo abaixo, após as
+    // demais validações, para não consultar a rede à toa.
+    if (requesterData.cep.replace(/\D/g, '').length !== 8) {
+      alert('Informe um CEP válido do solicitante (8 dígitos).');
+      return;
+    }
+    const guestWithInvalidCep = guestsData.findIndex((guest) => guest.cep.replace(/\D/g, '').length !== 8);
+    if (guestWithInvalidCep >= 0) {
+      alert(`Informe um CEP válido para o convidado ${guestWithInvalidCep + 1} (8 dígitos).`);
+      return;
+    }
+
     if (!requesterData.date || !requesterData.time || !requesterData.endTime) {
       alert(afterHoursMode
         ? 'Informe a data e os horários de início e término antes de enviar.'
@@ -1380,6 +1451,28 @@ export function App() {
     }
 
     setBookingBusy(true);
+
+    // Existência dos CEPs (ViaCEP). Revalida só o que ainda não está 'valid'
+    // (campos confirmados no onBlur são reaproveitados). Falha de rede não
+    // bloqueia — fetchCepValidity retorna ok=true e o servidor revalida.
+    const cepTargets = [
+      { token: 'requester', label: 'do solicitante', cep: requesterData.cep },
+      ...guestsData.map((guest, index) => ({ token: guest.id, label: `do convidado ${index + 1}`, cep: guest.cep })),
+    ];
+    for (const target of cepTargets) {
+      if (cepChecks[target.token]?.status === 'valid') continue;
+      const result = await fetchCepValidity(target.cep);
+      setCepChecks((current) => ({
+        ...current,
+        [target.token]: { status: result.ok ? 'valid' : 'invalid', label: result.label },
+      }));
+      if (!result.ok) {
+        alert(`O CEP ${target.label} não foi encontrado. Confira e tente novamente.`);
+        setBookingBusy(false);
+        return;
+      }
+    }
+
     let uploadedMaterials: BookingMaterialUpload[] = [];
     try {
       if (!supabase) throw new Error('Banco de dados não configurado.');
@@ -1422,7 +1515,7 @@ export function App() {
           body: JSON.stringify({
             idempotencyKey: bookingIdempotencyKey.current,
             requester: { ...requesterData, email: userEmail },
-            guests: guestsData,
+            guests: guestsData.map(({ id: _id, ...guest }) => guest),
             booking_details: {
               date: requesterData.date,
               time: requesterData.time,
@@ -1474,11 +1567,21 @@ export function App() {
   };
 
   const addGuest = () => {
-    setGuestsData((current) => [...current, { name: '', cpf: '', email: '', whatsapp: '', social: '' }]);
+    setGuestsData((current) => [...current, { id: crypto.randomUUID(), name: '', cpf: '', cep: '', email: '', whatsapp: '', social: '' }]);
   };
 
   const removeGuest = (index: number) => {
-    setGuestsData((current) => current.filter((_, i) => i !== index));
+    setGuestsData((current) => {
+      const removed = current[index];
+      if (removed) {
+        setCepChecks((checks) => {
+          const next = { ...checks };
+          delete next[removed.id];
+          return next;
+        });
+      }
+      return current.filter((_, i) => i !== index);
+    });
   };
 
   // Atualização imutável (corrige mutação direta do estado dos convidados).
@@ -1859,9 +1962,12 @@ export function App() {
                 </button>
 
                 {showNotifications && (
-                  <>
-                    <div className="account-menu-backdrop" onClick={() => setShowNotifications(false)} />
-                    <div id="notifications-panel" className="notif-panel" role="region" aria-label="Notificações">
+                  <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Notificações" onClick={() => setShowNotifications(false)}>
+                    <div id="notifications-panel" className="modal-content notif-modal" onClick={(event) => event.stopPropagation()}>
+                      <div className="modal-head">
+                        <h3>Notificações</h3>
+                        <button className="modal-close" type="button" onClick={() => setShowNotifications(false)} aria-label="Fechar"><X size={20} aria-hidden="true" /></button>
+                      </div>
                       <div className="notif-panel__head">
                         <div>
                           <strong>Seus avisos</strong>
@@ -2085,7 +2191,7 @@ export function App() {
                         </>
                       )}
                     </div>
-                  </>
+                  </div>
                 )}
             </div>
 
@@ -2810,6 +2916,26 @@ export function App() {
                   <input id="req-cpf" required type="text" inputMode="numeric" maxLength={14} placeholder="000.000.000-00" value={requesterData.cpf} onChange={(e) => setRequesterData({ ...requesterData, cpf: formatCpf(e.target.value) })} />
                 </div>
                 <div className="form-group">
+                  <label htmlFor="req-cep">CEP</label>
+                  <input
+                    id="req-cep"
+                    required
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={9}
+                    placeholder="00000-000"
+                    value={requesterData.cep}
+                    onChange={(e) => {
+                      setRequesterData({ ...requesterData, cep: formatCep(e.target.value) });
+                      setCepChecks((current) => ({ ...current, requester: { status: 'idle', label: '' } }));
+                    }}
+                    onBlur={(e) => runCepCheck('requester', e.target.value)}
+                  />
+                  {cepChecks.requester && cepChecks.requester.status !== 'idle' && (
+                    <small className={`cep-hint cep-hint--${cepChecks.requester.status}`}>{cepChecks.requester.label}</small>
+                  )}
+                </div>
+                <div className="form-group">
                   <label htmlFor="req-email">E-mail</label>
                   <input id="req-email" required readOnly type="email" placeholder="nome@email.com" value={userEmail} />
                 </div>
@@ -3048,7 +3174,7 @@ export function App() {
                 <p className="guest-empty">Nenhum convidado adicionado. Se a gravação terá participantes, cadastre cada um abaixo.</p>
               )}
               {guestsData.map((guest, index) => (
-                <div className="guest-card" key={index}>
+                <div className="guest-card" key={guest.id}>
                   <div className="guest-card__head">
                     <p className="guest-card__title">Convidado {index + 1}</p>
                     <button type="button" className="guest-card__remove" onClick={() => removeGuest(index)}>Remover</button>
@@ -3061,6 +3187,25 @@ export function App() {
                     <div className="form-group">
                       <label>CPF</label>
                       <input required type="text" inputMode="numeric" maxLength={14} placeholder="000.000.000-00" value={guest.cpf} onChange={(e) => updateGuest(index, 'cpf', formatCpf(e.target.value))} />
+                    </div>
+                    <div className="form-group">
+                      <label>CEP</label>
+                      <input
+                        required
+                        type="text"
+                        inputMode="numeric"
+                        maxLength={9}
+                        placeholder="00000-000"
+                        value={guest.cep}
+                        onChange={(e) => {
+                          updateGuest(index, 'cep', formatCep(e.target.value));
+                          setCepChecks((current) => ({ ...current, [guest.id]: { status: 'idle', label: '' } }));
+                        }}
+                        onBlur={(e) => runCepCheck(guest.id, e.target.value)}
+                      />
+                      {cepChecks[guest.id] && cepChecks[guest.id].status !== 'idle' && (
+                        <small className={`cep-hint cep-hint--${cepChecks[guest.id].status}`}>{cepChecks[guest.id].label}</small>
+                      )}
                     </div>
                     <div className="form-group">
                       <label>WhatsApp</label>
